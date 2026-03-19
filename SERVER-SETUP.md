@@ -1,5 +1,7 @@
 # Server Setup — Salon Booking Platform
 
+> Default production path is now Coolify-based deployment. See `../docs/12-coolify-cicd.md` for the canonical CI/CD flow.
+
 ## Stack Overview
 
 | Layer     | Technology          | Version  |

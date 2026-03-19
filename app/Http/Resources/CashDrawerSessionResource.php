@@ -18,6 +18,10 @@ class CashDrawerSessionResource extends JsonResource
             'closing_balance' => $this->closing_balance !== null ? (string) $this->closing_balance : null,
             'expected_balance' => $this->expected_balance !== null ? (string) $this->expected_balance : null,
             'discrepancy' => $this->discrepancy !== null ? (string) $this->discrepancy : null,
+            'approval_required' => (bool) ($this->approval_required ?? false),
+            'approved_by' => $this->approved_by ? (string) $this->approved_by : null,
+            'approved_at' => optional($this->approved_at)->toISOString(),
+            'approval_notes' => $this->approval_notes,
             'opened_at' => optional($this->opened_at)->toISOString(),
             'closed_at' => optional($this->closed_at)->toISOString(),
             // Frontend expects CashMovements

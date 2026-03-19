@@ -154,6 +154,11 @@ Route::middleware('auth:api')->group(function () {
         Route::middleware('role:salon_owner,manager,staff')->group(function () {
             Route::apiResource('appointments', \App\Http\Controllers\Api\Tenant\AppointmentController::class);
         });
+        Route::middleware('role:customer')->group(function () {
+            Route::get('customer/bookings', [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'index']);
+            Route::get('customer/bookings/{appointment}', [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'show']);
+            Route::patch('customer/bookings/{appointment}/cancel', [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'cancel']);
+        });
 
         // POS / Sales — salon_owner, manager, staff
         Route::middleware('role:salon_owner,manager,staff')->group(function () {
@@ -186,8 +191,13 @@ Route::middleware('auth:api')->group(function () {
         Route::middleware('role:salon_owner,manager,staff')->group(function () {
             Route::get('debts', [\App\Http\Controllers\Api\Tenant\DebtController::class, 'index']);
             Route::get('debts/aging-report', [\App\Http\Controllers\Api\Tenant\DebtController::class, 'agingReport']);
+            Route::get('debts/write-off-requests', [\App\Http\Controllers\Api\Tenant\DebtController::class, 'writeOffRequests']);
             Route::post('debts/{debt}/payment', [\App\Http\Controllers\Api\Tenant\DebtController::class, 'addPayment']);
             Route::post('debts/{debt}/write-off', [\App\Http\Controllers\Api\Tenant\DebtController::class, 'writeOff']);
+        });
+        Route::middleware('role:salon_owner,manager')->group(function () {
+            Route::post('debts/write-off-requests/{requestItem}/approve', [\App\Http\Controllers\Api\Tenant\DebtController::class, 'approveWriteOff']);
+            Route::post('debts/write-off-requests/{requestItem}/reject', [\App\Http\Controllers\Api\Tenant\DebtController::class, 'rejectWriteOff']);
         });
 
         // Reports — salon_owner, manager, staff

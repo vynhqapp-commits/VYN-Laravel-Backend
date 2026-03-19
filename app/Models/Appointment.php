@@ -9,7 +9,7 @@ class Appointment extends Model
 {
     use BelongsToTenant;
 
-    protected $fillable = ['tenant_id', 'branch_id', 'customer_id', 'staff_id', 'starts_at', 'ends_at', 'status', 'notes'];
+    protected $fillable = ['tenant_id', 'branch_id', 'customer_id', 'staff_id', 'starts_at', 'ends_at', 'status', 'source', 'notes'];
 
     protected $casts = ['starts_at' => 'datetime', 'ends_at' => 'datetime'];
 

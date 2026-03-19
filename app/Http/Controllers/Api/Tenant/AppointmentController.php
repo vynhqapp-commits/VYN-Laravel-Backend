@@ -105,6 +105,7 @@ class AppointmentController extends Controller
                 'end_time'    => 'required|date|after:start_time',
                 'notes'       => 'nullable|string',
                 'status'      => 'nullable|in:' . implode(',', self::STATUSES),
+                'source'      => 'nullable|in:dashboard,walk_in,public,online',
             ]);
         } catch (ValidationException $e) {
             return $this->validationError($e->errors());
@@ -123,6 +124,7 @@ class AppointmentController extends Controller
                 'starts_at'   => Carbon::parse($data['start_time']),
                 'ends_at'     => Carbon::parse($data['end_time']),
                 'status'      => $data['status'] ?? 'scheduled',
+                'source'      => $data['source'] ?? 'dashboard',
                 'notes'       => $data['notes'] ?? null,
             ]);
 

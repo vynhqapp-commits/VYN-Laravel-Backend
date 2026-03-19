@@ -12,6 +12,8 @@ use App\Models\Appointment;
 use App\Models\AppointmentService;
 use App\Models\Branch;
 use App\Models\Customer;
+use App\Models\ServiceBranchAvailability;
+use App\Models\ServiceBranchAvailabilityOverride;
 use App\Models\Service;
 use App\Models\StaffSchedule;
 use App\Models\Tenant;
@@ -137,12 +139,24 @@ class PublicBookingController extends Controller
 
         $slots = Cache::remember($cacheKey, 30, function () use ($data) {
             $date      = Carbon::parse($data['date']);
-            $dayOfWeek = $date->dayOfWeek; // 0=Sun, 1=Mon … 6=Sat
+            $dayOfWeek = $date->dayOfWeek;
             $service   = Service::withoutGlobalScopes()->findOrFail($data['service_id']);
             $duration  = (int) $service->duration_minutes;
 
+            $branchWindows = $this->resolveServiceWindows(
+                (int) $service->tenant_id,
+                (int) $service->id,
+                (int) $data['branch_id'],
+                $date
+            );
+
+            if ($branchWindows->isEmpty()) {
+                return [];
+            }
+
             $staffIds = StaffSchedule::withoutGlobalScopes()
                 ->whereHas('staff', fn ($q) => $q->withoutGlobalScopes()
+                    ->where('tenant_id', $service->tenant_id)
                     ->where('branch_id', $data['branch_id'])
                     ->where('is_active', true))
                 ->where('day_of_week', $dayOfWeek)
@@ -153,6 +167,7 @@ class PublicBookingController extends Controller
             if ($staffIds->isEmpty()) return [];
 
             $booked = Appointment::withoutGlobalScopes()
+                ->where('tenant_id', $service->tenant_id)
                 ->where('branch_id', $data['branch_id'])
                 ->whereDate('starts_at', $date->toDateString())
                 ->whereIn('status', ['scheduled', 'confirmed'])
@@ -161,39 +176,34 @@ class PublicBookingController extends Controller
             $freeSlots = collect();
 
             foreach ($staffIds as $staffId) {
-                $schedule = StaffSchedule::withoutGlobalScopes()
-                    ->where('staff_id', $staffId)
-                    ->where('day_of_week', $dayOfWeek)
-                    ->where('is_day_off', false)
-                    ->first();
+                foreach ($branchWindows as $window) {
+                    $start = Carbon::parse($date->toDateString() . ' ' . $window['start_time']);
+                    $end = Carbon::parse($date->toDateString() . ' ' . $window['end_time']);
+                    $stepMinutes = (int) ($window['slot_minutes'] ?? 30);
+                    $staffBooked = $booked->where('staff_id', $staffId);
+                    $cursor = $start->copy();
 
-                if (! $schedule) continue;
+                    while ($cursor->copy()->addMinutes($duration)->lte($end)) {
+                        $slotEnd = $cursor->copy()->addMinutes($duration);
+                        $conflict = $staffBooked->first(function ($appt) use ($cursor, $slotEnd) {
+                            $aStart = Carbon::parse($appt->starts_at);
+                            $aEnd = Carbon::parse($appt->ends_at);
+                            return $cursor->lt($aEnd) && $slotEnd->gt($aStart);
+                        });
 
-                $start       = Carbon::parse($date->toDateString() . ' ' . $schedule->start_time);
-                $end         = Carbon::parse($date->toDateString() . ' ' . $schedule->end_time);
-                $staffBooked = $booked->where('staff_id', $staffId);
-                $cursor      = $start->copy();
-
-                while ($cursor->copy()->addMinutes($duration)->lte($end)) {
-                    $slotEnd  = $cursor->copy()->addMinutes($duration);
-                    $conflict = $staffBooked->first(function ($appt) use ($cursor, $slotEnd) {
-                        $aStart = Carbon::parse($appt->starts_at);
-                        $aEnd   = Carbon::parse($appt->ends_at);
-                        return $cursor->lt($aEnd) && $slotEnd->gt($aStart);
-                    });
-
-                    if (! $conflict) {
-                        $key = $cursor->toISOString();
-                        if (! $freeSlots->has($key)) {
-                            $freeSlots->put($key, [
-                                'start'    => $cursor->toISOString(),
-                                'end'      => $slotEnd->toISOString(),
-                                'staff_id' => $staffId,
-                            ]);
+                        if (!$conflict) {
+                            $key = $cursor->toISOString();
+                            if (!$freeSlots->has($key)) {
+                                $freeSlots->put($key, [
+                                    'start' => $cursor->toISOString(),
+                                    'end' => $slotEnd->toISOString(),
+                                    'staff_id' => $staffId,
+                                ]);
+                            }
                         }
-                    }
 
-                    $cursor->addMinutes(30);
+                        $cursor->addMinutes(max(1, $stepMinutes));
+                    }
                 }
             }
 
@@ -229,6 +239,20 @@ class PublicBookingController extends Controller
         $endAt     = $startAt->copy()->addMinutes($service->duration_minutes);
         $dayOfWeek = $startAt->dayOfWeek; // 0=Sun, 1=Mon … 6=Sat
 
+        $tenantId = (int) $data['tenant_id'];
+        $branch = Branch::withoutGlobalScopes()->findOrFail($data['branch_id']);
+        if ((int) $branch->tenant_id !== $tenantId) {
+            return $this->error('Invalid branch for tenant', 422);
+        }
+        if ((int) $service->tenant_id !== $tenantId) {
+            return $this->error('Invalid service for tenant', 422);
+        }
+
+        $windows = $this->resolveServiceWindows($tenantId, (int) $service->id, (int) $branch->id, $startAt->copy());
+        if ($windows->isEmpty() || !$this->isWithinServiceWindow($startAt, $endAt, $windows)) {
+            return $this->error('Selected slot is not in service availability window.', 422);
+        }
+
         $staffId = $data['staff_id'] ?? null;
 
         if (! $staffId) {
@@ -253,8 +277,23 @@ class PublicBookingController extends Controller
 
         DB::beginTransaction();
         try {
+            $conflictExists = Appointment::withoutGlobalScopes()
+                ->lockForUpdate()
+                ->where('tenant_id', $tenantId)
+                ->where('branch_id', $data['branch_id'])
+                ->where('staff_id', $staffId)
+                ->whereIn('status', ['scheduled', 'confirmed'])
+                ->where('starts_at', '<', $endAt)
+                ->where('ends_at', '>', $startAt)
+                ->exists();
+
+            if ($conflictExists) {
+                DB::rollBack();
+                return $this->error('Selected slot is no longer available.', 422);
+            }
+
             $customer = Customer::withoutGlobalScopes()
-                ->where('tenant_id', $data['tenant_id'])
+                ->where('tenant_id', $tenantId)
                 ->where(function ($q) use ($data) {
                     if (! empty($data['client_email'])) {
                         $q->where('email', $data['client_email']);
@@ -267,7 +306,7 @@ class PublicBookingController extends Controller
 
             if (! $customer) {
                 $customer = Customer::withoutGlobalScopes()->create([
-                    'tenant_id' => $data['tenant_id'],
+                    'tenant_id' => $tenantId,
                     'name'      => $data['client_name'],
                     'phone'     => $data['client_phone'] ?? null,
                     'email'     => $data['client_email'] ?? null,
@@ -282,6 +321,7 @@ class PublicBookingController extends Controller
                 'starts_at'   => $startAt,
                 'ends_at'     => $endAt,
                 'status'      => 'scheduled',
+                'source'      => 'public',
                 'notes'       => 'Booked via public booking',
             ]);
 
@@ -319,5 +359,53 @@ class PublicBookingController extends Controller
             ['appointment' => (new PublicAppointmentResource($appointment))->resolve()],
             'Appointment booked successfully'
         );
+    }
+
+    private function resolveServiceWindows(int $tenantId, int $serviceId, int $branchId, Carbon $date)
+    {
+        $overrideRows = ServiceBranchAvailabilityOverride::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->where('service_id', $serviceId)
+            ->where('branch_id', $branchId)
+            ->where('date', $date->toDateString())
+            ->orderBy('start_time')
+            ->get();
+
+        if ($overrideRows->isNotEmpty()) {
+            if ($overrideRows->contains(fn ($r) => (bool) $r->is_closed)) {
+                return collect();
+            }
+            return $overrideRows->map(fn ($r) => [
+                'start_time' => (string) $r->start_time,
+                'end_time' => (string) $r->end_time,
+                'slot_minutes' => $r->slot_minutes,
+            ])->filter(fn ($w) => !empty($w['start_time']) && !empty($w['end_time']))->values();
+        }
+
+        return ServiceBranchAvailability::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->where('service_id', $serviceId)
+            ->where('branch_id', $branchId)
+            ->where('day_of_week', $date->dayOfWeek)
+            ->where('is_active', true)
+            ->orderBy('start_time')
+            ->get()
+            ->map(fn ($r) => [
+                'start_time' => (string) $r->start_time,
+                'end_time' => (string) $r->end_time,
+                'slot_minutes' => $r->slot_minutes,
+            ]);
+    }
+
+    private function isWithinServiceWindow(Carbon $startAt, Carbon $endAt, $windows): bool
+    {
+        foreach ($windows as $window) {
+            $windowStart = Carbon::parse($startAt->toDateString() . ' ' . $window['start_time']);
+            $windowEnd = Carbon::parse($startAt->toDateString() . ' ' . $window['end_time']);
+            if ($startAt->gte($windowStart) && $endAt->lte($windowEnd)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

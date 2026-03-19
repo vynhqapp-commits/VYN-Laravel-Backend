@@ -8,6 +8,7 @@ use App\Models\Customer;
 use App\Models\Debt;
 use App\Models\DebtLedgerEntry;
 use App\Models\DebtWriteOffRequest;
+use App\Services\AuditLogger;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -174,10 +175,17 @@ class DebtController extends Controller
         }
     }
 
-    // Frontend currently calls POST /api/debts/{debt}/write-off with empty body.
-    // Implement as a request + immediate approval by the current manager/owner.
     public function writeOff(Request $request, Debt $debt): JsonResponse
     {
+        try {
+            $payload = $request->validate([
+                'reason' => 'nullable|string|max:255',
+                'submit_for_approval' => 'nullable|boolean',
+            ]);
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
+        }
+
         $tenantId = auth('api')->user()?->tenant_id;
         $userId = auth('api')->id();
         if (!$tenantId || !$userId) return $this->error('Tenant required', 422);
@@ -196,19 +204,121 @@ class DebtController extends Controller
                 return $this->error('Nothing to write off', 422);
             }
 
+            $existingPending = DebtWriteOffRequest::query()
+                ->where('debt_id', $debt->id)
+                ->where('status', 'pending')
+                ->exists();
+
+            if ($existingPending) {
+                DB::rollBack();
+                return $this->error('A pending write-off request already exists', 422);
+            }
+
             $req = DebtWriteOffRequest::create([
                 'tenant_id' => $tenantId,
                 'debt_id' => $debt->id,
                 'requested_by' => $userId,
-                'approved_by' => $userId,
                 'amount' => $amount,
-                'reason' => 'Write-off',
-                'status' => 'approved',
+                'reason' => $payload['reason'] ?? 'Write-off',
+                'status' => !empty($payload['submit_for_approval']) ? 'pending' : 'approved',
             ]);
 
+            if (!empty($payload['submit_for_approval'])) {
+                AuditLogger::log($userId, $tenantId, 'debt.writeoff.requested', [
+                    'debt_id' => $debt->id,
+                    'request_id' => $req->id,
+                    'amount' => $amount,
+                ]);
+            } else {
+                $debt->update([
+                    'remaining_amount' => 0,
+                    'status' => 'settled',
+                ]);
+
+                DebtLedgerEntry::create([
+                    'tenant_id' => $tenantId,
+                    'customer_id' => $debt->customer_id,
+                    'debt_id' => $debt->id,
+                    'invoice_id' => $debt->invoice_id,
+                    'type' => 'write_off',
+                    'amount' => $amount * -1,
+                    'balance_after' => 0,
+                    'notes' => 'Debt write-off',
+                    'created_by' => $userId,
+                ]);
+
+                $req->update(['approved_by' => $userId]);
+                AuditLogger::log($userId, $tenantId, 'debt.writeoff.approved', [
+                    'debt_id' => $debt->id,
+                    'request_id' => $req->id,
+                    'amount' => $amount,
+                ]);
+            }
+
+            DB::commit();
+            return $this->created([
+                'request_id' => (string) $req->id,
+                'status' => (string) $req->status,
+            ], !empty($payload['submit_for_approval']) ? 'Write-off request submitted' : 'Write-off approved');
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return $this->error($e->getMessage(), 422);
+        }
+    }
+
+    public function writeOffRequests(Request $request): JsonResponse
+    {
+        try {
+            $data = $request->validate([
+                'status' => 'nullable|in:pending,approved,rejected',
+            ]);
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
+        }
+
+        $rows = DebtWriteOffRequest::query()
+            ->with(['debt:id,customer_id,remaining_amount,status', 'requestedBy:id,name', 'approvedBy:id,name'])
+            ->when(!empty($data['status']), fn ($q) => $q->where('status', $data['status']))
+            ->latest()
+            ->limit(200)
+            ->get();
+
+        return $this->success($rows);
+    }
+
+    public function approveWriteOff(DebtWriteOffRequest $requestItem): JsonResponse
+    {
+        $tenantId = auth('api')->user()?->tenant_id;
+        $userId = auth('api')->id();
+        if (!$tenantId || !$userId) return $this->error('Tenant required', 422);
+
+        DB::beginTransaction();
+        try {
+            if ((int) $requestItem->tenant_id !== (int) $tenantId) {
+                DB::rollBack();
+                return $this->error('Not found', 404);
+            }
+            if ((string) $requestItem->status !== 'pending') {
+                DB::rollBack();
+                return $this->error('Only pending requests can be approved', 422);
+            }
+
+            $debt = Debt::query()->lockForUpdate()->findOrFail($requestItem->debt_id);
+            if ((int) $debt->tenant_id !== (int) $tenantId) {
+                DB::rollBack();
+                return $this->error('Not found', 404);
+            }
+
+            $amount = min((float) $requestItem->amount, (float) $debt->remaining_amount);
+            if ($amount <= 0.009) {
+                DB::rollBack();
+                return $this->error('Nothing to write off', 422);
+            }
+
+            $newRemaining = max(0.0, (float) $debt->remaining_amount - $amount);
             $debt->update([
-                'remaining_amount' => 0,
-                'status' => 'settled',
+                'remaining_amount' => $newRemaining,
+                'status' => $newRemaining <= 0.009 ? 'settled' : 'partial',
             ]);
 
             $entry = DebtLedgerEntry::create([
@@ -218,17 +328,58 @@ class DebtController extends Controller
                 'invoice_id' => $debt->invoice_id,
                 'type' => 'write_off',
                 'amount' => $amount * -1,
-                'balance_after' => 0,
-                'notes' => 'Debt write-off',
+                'balance_after' => $newRemaining,
+                'notes' => 'Debt write-off approved',
                 'created_by' => $userId,
             ]);
 
+            $requestItem->update([
+                'status' => 'approved',
+                'approved_by' => $userId,
+            ]);
+
+            AuditLogger::log($userId, $tenantId, 'debt.writeoff.approved', [
+                'debt_id' => $debt->id,
+                'request_id' => $requestItem->id,
+                'amount' => $amount,
+            ]);
+
             DB::commit();
-            return $this->created(new DebtLedgerEntryResource($entry), 'Write-off approved');
+            return $this->success(new DebtLedgerEntryResource($entry), 'Write-off approved');
         } catch (\Throwable $e) {
             DB::rollBack();
             return $this->error($e->getMessage(), 422);
         }
+    }
+
+    public function rejectWriteOff(DebtWriteOffRequest $requestItem): JsonResponse
+    {
+        $tenantId = auth('api')->user()?->tenant_id;
+        $userId = auth('api')->id();
+        if (!$tenantId || !$userId) return $this->error('Tenant required', 422);
+
+        if ((int) $requestItem->tenant_id !== (int) $tenantId) {
+            return $this->error('Not found', 404);
+        }
+        if ((string) $requestItem->status !== 'pending') {
+            return $this->error('Only pending requests can be rejected', 422);
+        }
+
+        $requestItem->update([
+            'status' => 'rejected',
+            'approved_by' => $userId,
+        ]);
+
+        AuditLogger::log($userId, $tenantId, 'debt.writeoff.rejected', [
+            'debt_id' => $requestItem->debt_id,
+            'request_id' => $requestItem->id,
+            'amount' => (float) $requestItem->amount,
+        ]);
+
+        return $this->success([
+            'request_id' => (string) $requestItem->id,
+            'status' => 'rejected',
+        ], 'Write-off rejected');
     }
 }
 

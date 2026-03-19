@@ -6,13 +6,14 @@ use Illuminate\Database\Eloquent\Model;
 
 class CashDrawerSession extends Model
 {
-    protected $fillable = ['cash_drawer_id', 'opened_by', 'closed_by', 'opening_balance', 'closing_balance', 'expected_balance', 'discrepancy', 'opened_at', 'closed_at', 'status'];
+    protected $fillable = ['cash_drawer_id', 'opened_by', 'closed_by', 'approved_by', 'opening_balance', 'closing_balance', 'expected_balance', 'discrepancy', 'approval_required', 'opened_at', 'closed_at', 'approved_at', 'approval_notes', 'status'];
 
-    protected $casts = ['opening_balance' => 'decimal:2', 'closing_balance' => 'decimal:2', 'expected_balance' => 'decimal:2', 'discrepancy' => 'decimal:2', 'opened_at' => 'datetime', 'closed_at' => 'datetime'];
+    protected $casts = ['opening_balance' => 'decimal:2', 'closing_balance' => 'decimal:2', 'expected_balance' => 'decimal:2', 'discrepancy' => 'decimal:2', 'approval_required' => 'boolean', 'opened_at' => 'datetime', 'closed_at' => 'datetime', 'approved_at' => 'datetime'];
 
     public function cashDrawer() { return $this->belongsTo(CashDrawer::class); }
     public function openedBy() { return $this->belongsTo(User::class, 'opened_by'); }
     public function closedBy() { return $this->belongsTo(User::class, 'closed_by'); }
+    public function approvedBy() { return $this->belongsTo(User::class, 'approved_by'); }
     public function payments() { return $this->hasMany(Payment::class); }
     public function movements() { return $this->hasMany(CashMovement::class, 'cash_drawer_session_id'); }
 }

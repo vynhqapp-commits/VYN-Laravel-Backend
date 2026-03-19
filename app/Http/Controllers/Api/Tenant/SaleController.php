@@ -17,6 +17,7 @@ use App\Models\CommissionEntry;
 use App\Models\CommissionRule;
 use App\Models\TipAllocation;
 use App\Models\DebtLedgerEntry;
+use App\Services\AuditLogger;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -559,6 +560,12 @@ class SaleController extends Controller
             }
 
             DB::commit();
+
+            AuditLogger::log(auth('api')->id(), $tenantId, 'sale.refunded', [
+                'invoice_id' => $sale->id,
+                'branch_id' => $sale->branch_id,
+                'reason' => $data['refund_reason'] ?? null,
+            ]);
 
             return $this->success(null, 'Refund processed');
         } catch (\Throwable $e) {

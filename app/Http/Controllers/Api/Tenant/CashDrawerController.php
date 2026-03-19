@@ -11,6 +11,7 @@ use App\Models\CashDrawerSession;
 use App\Models\CashMovement;
 use App\Models\LedgerEntry;
 use App\Models\Payment;
+use App\Services\AuditLogger;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,6 +20,8 @@ use Illuminate\Validation\ValidationException;
 
 class CashDrawerController extends Controller
 {
+    private const AUTO_APPROVE_DISCREPANCY_THRESHOLD = 100.00;
+
     public function index(Request $request): JsonResponse
     {
         try {
@@ -91,6 +94,12 @@ class CashDrawerController extends Controller
                 'status' => 'open',
             ]);
 
+            AuditLogger::log($userId, $tenantId, 'cash_drawer.session.opened', [
+                'session_id' => $session->id,
+                'branch_id' => $data['branch_id'],
+                'opening_balance' => (float) ($data['opening_balance'] ?? 0),
+            ]);
+
             DB::commit();
             return $this->created(new CashDrawerSessionResource($session->load(['movements', 'cashDrawer'])));
         } catch (\Throwable $e) {
@@ -129,6 +138,13 @@ class CashDrawerController extends Controller
                 'amount' => (float) $data['amount'],
                 'reason' => $data['reason'] ?? null,
                 'created_by' => $userId,
+            ]);
+
+            AuditLogger::log($userId, $tenantId, 'cash_drawer.movement.recorded', [
+                'session_id' => $session->id,
+                'type' => $data['type'],
+                'amount' => (float) $data['amount'],
+                'reason' => $data['reason'] ?? null,
             ]);
 
             return $this->created(new CashMovementResource($movement), 'Movement recorded');
@@ -178,13 +194,18 @@ class CashDrawerController extends Controller
             $actual = (float) $data['actual_cash'];
             $discrepancy = $actual - $expected;
 
+            $threshold = (float) env('CASH_DRAWER_AUTO_APPROVE_MAX_DISCREPANCY', self::AUTO_APPROVE_DISCREPANCY_THRESHOLD);
+            $approvalRequired = abs($discrepancy) > $threshold;
+            $status = $approvalRequired ? 'pending_approval' : 'closed';
+
             $session->update([
                 'closing_balance' => $actual,
                 'expected_balance' => $expected,
                 'discrepancy' => $discrepancy,
+                'approval_required' => $approvalRequired,
                 'closed_by' => $userId,
                 'closed_at' => Carbon::now(),
-                'status' => 'closed',
+                'status' => $status,
             ]);
 
             // Ledger posting for over/short
@@ -204,8 +225,16 @@ class CashDrawerController extends Controller
                 ]);
             }
 
+            AuditLogger::log($userId, $tenantId, 'cash_drawer.session.closed', [
+                'session_id' => $session->id,
+                'expected_balance' => $expected,
+                'actual_cash' => $actual,
+                'discrepancy' => $discrepancy,
+                'status' => $status,
+            ]);
+
             DB::commit();
-            return $this->success(new CashDrawerSessionResource($session->fresh()->load(['movements', 'cashDrawer'])), 'Session closed');
+            return $this->success(new CashDrawerSessionResource($session->fresh()->load(['movements', 'cashDrawer'])), $approvalRequired ? 'Session closed and pending approval' : 'Session closed');
         } catch (\Throwable $e) {
             DB::rollBack();
             return $this->error($e->getMessage(), 422);
@@ -214,17 +243,36 @@ class CashDrawerController extends Controller
 
     public function approve(Request $request, CashDrawerSession $session): JsonResponse
     {
+        try {
+            $data = $request->validate([
+                'notes' => 'nullable|string|max:255',
+            ]);
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
+        }
+
         $tenantId = auth('api')->user()?->tenant_id;
-        if (!$tenantId) return $this->error('Tenant required', 422);
+        $userId = auth('api')->id();
+        if (!$tenantId || !$userId) return $this->error('Tenant required', 422);
 
         try {
             $session->loadMissing(['cashDrawer', 'movements']);
             if ((int) $session->cashDrawer?->tenant_id !== (int) $tenantId) {
                 return $this->error('Not found', 404);
             }
-            if ($session->status !== 'closed') return $this->error('Only closed sessions can be reconciled', 422);
+            if (!in_array((string) $session->status, ['closed', 'pending_approval'], true)) return $this->error('Only closed sessions can be reconciled', 422);
 
-            $session->update(['status' => 'reconciled']);
+            $session->update([
+                'status' => 'reconciled',
+                'approved_by' => $userId,
+                'approved_at' => Carbon::now(),
+                'approval_notes' => $data['notes'] ?? null,
+            ]);
+
+            AuditLogger::log($userId, $tenantId, 'cash_drawer.session.approved', [
+                'session_id' => $session->id,
+                'notes' => $data['notes'] ?? null,
+            ]);
             return $this->success(new CashDrawerSessionResource($session->fresh()->load(['movements', 'cashDrawer'])), 'Session reconciled');
         } catch (\Throwable $e) {
             return $this->error($e->getMessage(), 422);

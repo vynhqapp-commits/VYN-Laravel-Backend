@@ -9,6 +9,7 @@ use App\Models\LedgerEntry;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Service;
+use App\Models\StockMovement;
 use App\Models\Tenant;
 use App\Models\Inventory;
 use Carbon\Carbon;
@@ -39,15 +40,24 @@ class ReportController extends Controller
 
         if (!empty($data['branch_id'])) $q->where('branch_id', $data['branch_id']);
 
-        $entries = $q->get(['type', 'amount']);
+        $entries = $q->get(['type', 'category', 'amount']);
 
         $revenue = (float) $entries->where('type', 'revenue')->sum('amount');
         $refunds = (float) $entries->where('type', 'refund')->sum('amount'); // negative numbers
         $expenses = (float) $entries->where('type', 'expense')->sum('amount');
+        $commission = (float) $entries
+            ->filter(fn ($e) => (string) $e->type === 'expense' && in_array((string) ($e->category ?? ''), ['staff_commission', 'staff_tips'], true))
+            ->sum('amount');
+        $commissionReversal = (float) $entries
+            ->filter(fn ($e) => (string) $e->type === 'refund' && in_array((string) ($e->category ?? ''), ['staff_commission', 'staff_tips'], true))
+            ->sum('amount');
+        $commission = $commission + $commissionReversal;
+        $operatingExpense = $expenses - ((float) $entries
+            ->filter(fn ($e) => (string) $e->type === 'expense' && in_array((string) ($e->category ?? ''), ['staff_commission', 'staff_tips'], true))
+            ->sum('amount'));
 
         $netRevenue = $revenue + $refunds;
-        $commission = 0.0;
-        $profit = $netRevenue - $expenses - $commission;
+        $profit = $netRevenue - $operatingExpense - $commission;
 
         // Breakdown by type/category for drill-down UIs
         $byType = LedgerEntry::query()
@@ -74,7 +84,7 @@ class ReportController extends Controller
         return $this->success([
             'period' => $data['period'],
             'revenue' => round($netRevenue, 2),
-            'expense' => round($expenses, 2),
+            'expense' => round($operatingExpense, 2),
             'commission' => round($commission, 2),
             'profit' => round($profit, 2),
             'entries' => [
@@ -168,8 +178,58 @@ class ReportController extends Controller
 
     public function inventoryMovement(Request $request): JsonResponse
     {
-        // Inventory module is not wired yet; keep the UI unblocked.
-        return $this->success([]);
+        try {
+            $data = $request->validate([
+                'from' => 'required|date_format:Y-m-d',
+                'to' => 'required|date_format:Y-m-d|after_or_equal:from',
+                'branch_id' => 'nullable|exists:branches,id',
+                'product_id' => 'nullable|exists:products,id',
+            ]);
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
+        }
+
+        $from = Carbon::parse($data['from'])->startOfDay();
+        $to = Carbon::parse($data['to'])->endOfDay();
+
+        $movements = StockMovement::query()
+            ->with(['product:id,name', 'branch:id,name'])
+            ->whereBetween('created_at', [$from, $to])
+            ->when(!empty($data['branch_id']), fn ($q) => $q->where('branch_id', $data['branch_id']))
+            ->when(!empty($data['product_id']), fn ($q) => $q->where('product_id', $data['product_id']))
+            ->latest('id')
+            ->limit(500)
+            ->get();
+
+        $summary = [
+            'in' => (int) $movements->where('type', 'in')->sum('quantity'),
+            'out' => (int) $movements->whereIn('type', ['out', 'service_deduction'])->sum('quantity'),
+            'net' => 0,
+        ];
+        $summary['net'] = $summary['in'] - $summary['out'];
+
+        $rows = $movements->map(function (StockMovement $m) {
+            return [
+                'id' => (string) $m->id,
+                'branch_id' => $m->branch_id ? (string) $m->branch_id : null,
+                'branch_name' => $m->branch?->name,
+                'product_id' => $m->product_id ? (string) $m->product_id : null,
+                'product_name' => $m->product?->name,
+                'type' => (string) $m->type,
+                'quantity' => (int) $m->quantity,
+                'reason' => $m->reason,
+                'reference_type' => $m->reference_type,
+                'reference_id' => $m->reference_id ? (string) $m->reference_id : null,
+                'created_at' => optional($m->created_at)->toISOString(),
+            ];
+        })->values();
+
+        return $this->success([
+            'from' => $data['from'],
+            'to' => $data['to'],
+            'summary' => $summary,
+            'rows' => $rows,
+        ]);
     }
 
     public function lowStock(Request $request): JsonResponse

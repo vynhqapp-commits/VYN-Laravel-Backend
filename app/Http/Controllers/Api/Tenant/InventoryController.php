@@ -8,6 +8,7 @@ use App\Models\Branch;
 use App\Models\Inventory;
 use App\Models\Product;
 use App\Models\StockMovement;
+use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -48,7 +49,8 @@ class InventoryController extends Controller
         }
 
         $tenantId = auth('api')->user()?->tenant_id;
-        if (!$tenantId) return $this->error('Tenant required', 422);
+        $userId = auth('api')->id();
+        if (!$tenantId || !$userId) return $this->error('Tenant required', 422);
 
         $delta = (int) $data['quantity'];
         if ($delta === 0) return $this->error('Quantity change cannot be 0', 422);
@@ -79,6 +81,14 @@ class InventoryController extends Controller
                 'product_id' => (int) $data['product_id'],
                 'type' => $type,
                 'quantity' => abs($delta),
+                'reason' => $data['reason'] ?? 'adjustment',
+            ]);
+
+            AuditLogger::log($userId, $tenantId, 'inventory.adjusted', [
+                'branch_id' => (int) $data['branch_id'],
+                'product_id' => (int) $data['product_id'],
+                'delta' => $delta,
+                'new_quantity' => $newQty,
                 'reason' => $data['reason'] ?? 'adjustment',
             ]);
 
