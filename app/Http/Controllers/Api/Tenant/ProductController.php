@@ -1,0 +1,120 @@
+<?php
+
+namespace App\Http\Controllers\Api\Tenant;
+
+use App\Http\Controllers\Controller;
+use App\Http\Resources\ProductResource;
+use App\Models\Product;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
+
+class ProductController extends Controller
+{
+    public function index(Request $request): JsonResponse
+    {
+        try {
+            $data = $request->validate([
+                'is_active' => 'nullable|boolean',
+                'search' => 'nullable|string|max:100',
+            ]);
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
+        }
+
+        try {
+            $q = Product::query()->latest('id');
+            if (array_key_exists('is_active', $data)) {
+                $q->where('is_active', (bool) $data['is_active']);
+            }
+            if (! empty($data['search'])) {
+                $s = trim((string) $data['search']);
+                $q->where(function ($qq) use ($s) {
+                    $qq->where('name', 'like', "%{$s}%")
+                        ->orWhere('sku', 'like', "%{$s}%");
+                });
+            }
+
+            return $this->paginated($q->paginate(50));
+        } catch (\Throwable $e) {
+            return $this->error($e->getMessage());
+        }
+    }
+
+    public function store(Request $request): JsonResponse
+    {
+        try {
+            $data = $request->validate([
+                'name' => 'required|string|max:255',
+                'sku' => 'nullable|string|max:80',
+                'cost' => 'nullable|numeric|min:0',
+                'price' => 'nullable|numeric|min:0',
+                'stock_quantity' => 'nullable|integer|min:0',
+                'low_stock_threshold' => 'nullable|integer|min:0',
+                'is_active' => 'nullable|boolean',
+            ]);
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
+        }
+
+        try {
+            $product = Product::create([
+                'name' => $data['name'],
+                'sku' => $data['sku'] ?? null,
+                'cost' => $data['cost'] ?? 0,
+                'price' => $data['price'] ?? ($data['cost'] ?? 0),
+                'stock_quantity' => $data['stock_quantity'] ?? 0,
+                'low_stock_threshold' => $data['low_stock_threshold'] ?? 5,
+                'is_active' => $data['is_active'] ?? true,
+            ]);
+
+            return $this->created(new ProductResource($product), 'Product created');
+        } catch (\Throwable $e) {
+            return $this->error($e->getMessage());
+        }
+    }
+
+    public function show(Product $product): JsonResponse
+    {
+        try {
+            return $this->success(new ProductResource($product));
+        } catch (\Throwable $e) {
+            return $this->error($e->getMessage());
+        }
+    }
+
+    public function update(Request $request, Product $product): JsonResponse
+    {
+        try {
+            $data = $request->validate([
+                'name' => 'sometimes|string|max:255',
+                'sku' => 'nullable|string|max:80',
+                'cost' => 'nullable|numeric|min:0',
+                'price' => 'nullable|numeric|min:0',
+                'stock_quantity' => 'nullable|integer|min:0',
+                'low_stock_threshold' => 'nullable|integer|min:0',
+                'is_active' => 'nullable|boolean',
+            ]);
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
+        }
+
+        try {
+            $product->update($data);
+            return $this->success(new ProductResource($product), 'Product updated');
+        } catch (\Throwable $e) {
+            return $this->error($e->getMessage());
+        }
+    }
+
+    public function destroy(Product $product): JsonResponse
+    {
+        try {
+            $product->delete();
+            return $this->success(null, 'Product deleted');
+        } catch (\Throwable $e) {
+            return $this->error($e->getMessage());
+        }
+    }
+}
+

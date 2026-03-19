@@ -1,0 +1,249 @@
+{
+  "info": {
+    "name": "Salon SaaS — Auth",
+    "_postman_id": "salon-saas-auth-v1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://127.0.0.1:8000/api" },
+    { "key": "token",    "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Login — salon owner",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const d = pm.response.json()?.data;",
+              "if (d?.token) pm.collectionVariables.set('token', d.token);",
+              "pm.test('200 OK',        () => pm.response.to.have.status(200));",
+              "pm.test('has token',     () => pm.expect(d?.token).to.be.a('string'));",
+              "pm.test('has role',      () => pm.expect(d?.user?.role).to.be.a('string'));",
+              "pm.test('has tenantId',  () => pm.expect(d?.user).to.have.property('tenantId'));",
+              "console.log('role:', d?.user?.role, '| tenantId:', d?.user?.tenantId);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/login",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"owner@glamour-salon.com\",\n  \"password\": \"password\"\n}"
+        }
+      }
+    },
+    {
+      "name": "1b. Login — super admin",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const d = pm.response.json()?.data;",
+              "if (d?.token) pm.collectionVariables.set('token', d.token);",
+              "pm.test('200 OK',              () => pm.response.to.have.status(200));",
+              "pm.test('role is super_admin', () => pm.expect(d?.user?.role).to.eql('super_admin'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/login",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"admin@platform.com\",\n  \"password\": \"password\"\n}"
+        }
+      }
+    },
+    {
+      "name": "1c. Login — wrong password (expect 401)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/login",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"owner@glamour-salon.com\",\n  \"password\": \"wrongpassword\"\n}"
+        }
+      }
+    },
+    {
+      "name": "2. Register Customer",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const d = pm.response.json()?.data;",
+              "if (d?.token) pm.collectionVariables.set('token', d.token);",
+              "pm.test('201 Created',      () => pm.response.to.have.status(201));",
+              "pm.test('role customer',    () => pm.expect(d?.user?.role).to.eql('customer'));",
+              "pm.test('tenantId is null', () => pm.expect(d?.user?.tenantId).to.be.null);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/register/customer",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"testcustomer@example.com\",\n  \"password\": \"password123\",\n  \"full_name\": \"Test Customer\",\n  \"phone\": \"+1234567890\"\n}"
+        }
+      }
+    },
+    {
+      "name": "3. Register Salon Owner",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const d = pm.response.json()?.data;",
+              "if (d?.token) pm.collectionVariables.set('token', d.token);",
+              "pm.test('201 Created',         () => pm.response.to.have.status(201));",
+              "pm.test('role salon_owner',    () => pm.expect(d?.user?.role).to.eql('salon_owner'));",
+              "pm.test('tenantId is set',     () => pm.expect(d?.user?.tenantId).to.not.be.null);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/register/salon-owner",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"salon_name\": \"My New Salon\",\n  \"email\": \"newsalon@example.com\",\n  \"password\": \"password123\",\n  \"full_name\": \"Salon Owner\",\n  \"phone\": \"+9876543210\"\n}"
+        }
+      }
+    },
+    {
+      "name": "4. OTP — Send",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('200 OK',       () => pm.response.to.have.status(200));",
+              "pm.test('success true', () => pm.expect(pm.response.json().success).to.be.true);",
+              "console.log('Check storage/logs/laravel.log for the OTP code');"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/request-otp",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"owner@glamour-salon.com\"\n}"
+        }
+      }
+    },
+    {
+      "name": "5. OTP — Verify",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const d = pm.response.json()?.data;",
+              "if (d?.token) pm.collectionVariables.set('token', d.token);",
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "console.log('role:', d?.user?.role);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/verify-otp",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"owner@glamour-salon.com\",\n  \"code\": \"PASTE_CODE_HERE\"\n}"
+        }
+      }
+    },
+    {
+      "name": "6. Me",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const d = pm.response.json()?.data;",
+              "pm.test('200 OK',       () => pm.response.to.have.status(200));",
+              "pm.test('has email',    () => pm.expect(d?.email).to.be.a('string'));",
+              "pm.test('has role',     () => pm.expect(d?.role).to.be.a('string'));",
+              "pm.test('has tenantId', () => pm.expect(d).to.have.property('tenantId'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/me",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+      }
+    },
+    {
+      "name": "7. Logout",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('200 OK', () => pm.response.to.have.status(200));",
+              "pm.collectionVariables.set('token', '');",
+              "console.log('Token cleared');"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/logout",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+      }
+    },
+    {
+      "name": "8. Me after logout (expect 401)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('401 after logout', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/me",
+        "header": [{ "key": "Authorization", "value": "Bearer {{token}}" }]
+      }
+    }
+  ]
+}
