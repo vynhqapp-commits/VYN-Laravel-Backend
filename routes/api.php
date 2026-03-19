@@ -105,6 +105,17 @@ Route::middleware('auth:api')->group(function () {
             Route::apiResource('service-categories', \App\Http\Controllers\Api\Tenant\ServiceCategoryController::class)
                 ->except(['show']);
             Route::apiResource('services', \App\Http\Controllers\Api\Tenant\ServiceController::class);
+
+            // Per-branch service availability (weekly + overrides)
+            Route::get('services/{service}/availabilities', [\App\Http\Controllers\Api\Tenant\ServiceAvailabilityController::class, 'index']);
+            Route::post('services/{service}/availabilities', [\App\Http\Controllers\Api\Tenant\ServiceAvailabilityController::class, 'store']);
+            Route::patch('services/{service}/availabilities/{availability}', [\App\Http\Controllers\Api\Tenant\ServiceAvailabilityController::class, 'update']);
+            Route::delete('services/{service}/availabilities/{availability}', [\App\Http\Controllers\Api\Tenant\ServiceAvailabilityController::class, 'destroy']);
+
+            Route::get('services/{service}/availability-overrides', [\App\Http\Controllers\Api\Tenant\ServiceAvailabilityOverrideController::class, 'index']);
+            Route::post('services/{service}/availability-overrides', [\App\Http\Controllers\Api\Tenant\ServiceAvailabilityOverrideController::class, 'store']);
+            Route::patch('services/{service}/availability-overrides/{override}', [\App\Http\Controllers\Api\Tenant\ServiceAvailabilityOverrideController::class, 'update']);
+            Route::delete('services/{service}/availability-overrides/{override}', [\App\Http\Controllers\Api\Tenant\ServiceAvailabilityOverrideController::class, 'destroy']);
         });
 
         // Products — salon_owner, manager (manage) + staff (view)

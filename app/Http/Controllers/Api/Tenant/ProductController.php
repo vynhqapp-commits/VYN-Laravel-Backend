@@ -17,6 +17,9 @@ class ProductController extends Controller
             $data = $request->validate([
                 'is_active' => 'nullable|boolean',
                 'search' => 'nullable|string|max:100',
+                'category' => 'nullable|string|max:120',
+                'page' => 'nullable|integer|min:1',
+                'per_page' => 'nullable|integer|min:1|max:100',
             ]);
         } catch (ValidationException $e) {
             return $this->validationError($e->errors());
@@ -31,11 +34,16 @@ class ProductController extends Controller
                 $s = trim((string) $data['search']);
                 $q->where(function ($qq) use ($s) {
                     $qq->where('name', 'like', "%{$s}%")
-                        ->orWhere('sku', 'like', "%{$s}%");
+                        ->orWhere('sku', 'like', "%{$s}%")
+                        ->orWhere('description', 'like', "%{$s}%")
+                        ->orWhere('category', 'like', "%{$s}%");
                 });
             }
+            if (!empty($data['category'])) {
+                $q->where('category', $data['category']);
+            }
 
-            return $this->paginated($q->paginate(50));
+            return $this->paginated($q->paginate((int) ($data['per_page'] ?? 20)));
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
         }
@@ -46,6 +54,8 @@ class ProductController extends Controller
         try {
             $data = $request->validate([
                 'name' => 'required|string|max:255',
+                'description' => 'nullable|string|max:4000',
+                'category' => 'nullable|string|max:120',
                 'sku' => 'nullable|string|max:80',
                 'cost' => 'nullable|numeric|min:0',
                 'price' => 'nullable|numeric|min:0',
@@ -60,6 +70,8 @@ class ProductController extends Controller
         try {
             $product = Product::create([
                 'name' => $data['name'],
+                'description' => $data['description'] ?? null,
+                'category' => $data['category'] ?? null,
                 'sku' => $data['sku'] ?? null,
                 'cost' => $data['cost'] ?? 0,
                 'price' => $data['price'] ?? ($data['cost'] ?? 0),
@@ -88,6 +100,8 @@ class ProductController extends Controller
         try {
             $data = $request->validate([
                 'name' => 'sometimes|string|max:255',
+                'description' => 'nullable|string|max:4000',
+                'category' => 'nullable|string|max:120',
                 'sku' => 'nullable|string|max:80',
                 'cost' => 'nullable|numeric|min:0',
                 'price' => 'nullable|numeric|min:0',

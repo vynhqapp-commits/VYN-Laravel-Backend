@@ -9,7 +9,16 @@ class Branch extends Model
 {
     use BelongsToTenant;
 
-    protected $fillable = ['tenant_id', 'name', 'phone', 'address', 'timezone', 'is_active'];
+    protected $fillable = [
+        'tenant_id',
+        'name',
+        'phone',
+        'contact_email',
+        'address',
+        'timezone',
+        'working_hours',
+        'is_active',
+    ];
 
     protected $casts = ['is_active' => 'boolean'];
 

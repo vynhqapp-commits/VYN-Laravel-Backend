@@ -10,10 +10,28 @@ use Illuminate\Validation\ValidationException;
 
 class BranchController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         try {
-            $branches = Branch::with('staff')->where('is_active', true)->get();
+            $data = $request->validate([
+                'include_inactive' => 'nullable|boolean',
+                'q' => 'nullable|string|max:255',
+            ]);
+
+            $includeInactive = filter_var($data['include_inactive'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $qTerm = trim((string) ($data['q'] ?? ''));
+
+            $q = Branch::with('staff');
+            if (!$includeInactive) $q->where('is_active', true);
+            if ($qTerm !== '') {
+                $q->where(function ($sub) use ($qTerm) {
+                    $sub->where('name', 'like', "%{$qTerm}%")
+                        ->orWhere('address', 'like', "%{$qTerm}%")
+                        ->orWhere('phone', 'like', "%{$qTerm}%")
+                        ->orWhere('contact_email', 'like', "%{$qTerm}%");
+                });
+            }
+            $branches = $q->orderBy('name')->get();
             return $this->success(BranchResource::collection($branches));
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
@@ -26,8 +44,11 @@ class BranchController extends Controller
             $data = $request->validate([
                 'name'     => 'required|string|max:255',
                 'phone'    => 'nullable|string',
+                'contact_email' => 'nullable|email|max:255',
                 'address'  => 'nullable|string',
                 'timezone' => 'nullable|string',
+                'working_hours' => 'nullable|string|max:4000',
+                'is_active' => 'sometimes|boolean',
             ]);
 
             return $this->created(new BranchResource(Branch::create($data)));
@@ -54,8 +75,10 @@ class BranchController extends Controller
             $branch->update($request->validate([
                 'name'      => 'sometimes|string|max:255',
                 'phone'     => 'nullable|string',
+                'contact_email' => 'nullable|email|max:255',
                 'address'   => 'nullable|string',
                 'timezone'  => 'nullable|string',
+                'working_hours' => 'nullable|string|max:4000',
                 'is_active' => 'sometimes|boolean',
             ]));
 

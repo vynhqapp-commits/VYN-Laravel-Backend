@@ -9,9 +9,26 @@ class Product extends Model
 {
     use BelongsToTenant;
 
-    protected $fillable = ['tenant_id', 'name', 'sku', 'price', 'cost', 'stock_quantity', 'low_stock_threshold', 'is_active'];
+    protected $fillable = [
+        'tenant_id',
+        'name',
+        'description',
+        'category',
+        'sku',
+        'price',
+        'cost',
+        'stock_quantity',
+        'low_stock_threshold',
+        'is_active',
+    ];
 
-    protected $casts = ['price' => 'decimal:2', 'cost' => 'decimal:2', 'is_active' => 'boolean'];
+    protected $casts = [
+        'price' => 'decimal:2',
+        'cost' => 'decimal:2',
+        'stock_quantity' => 'integer',
+        'low_stock_threshold' => 'integer',
+        'is_active' => 'boolean',
+    ];
 
     public function stockMovements() { return $this->hasMany(StockMovement::class); }
 
