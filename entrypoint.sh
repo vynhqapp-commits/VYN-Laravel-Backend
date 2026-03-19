@@ -26,6 +26,8 @@ FILESYSTEM_DISK="${FILESYSTEM_DISK:-local}"
 QUEUE_CONNECTION="${QUEUE_CONNECTION:-database}"
 
 CACHE_STORE="${CACHE_STORE:-database}"
+
+JWT_SECRET="${JWT_SECRET:-}"
 EOF
 
 php artisan key:generate --force
