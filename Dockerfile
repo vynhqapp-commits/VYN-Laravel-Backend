@@ -8,14 +8,13 @@ RUN composer install \
     --no-scripts \
     --prefer-dist
 
-FROM php:8.3-fpm-alpine AS runtime
+FROM php:8.3-cli-alpine AS runtime
 
 WORKDIR /var/www/html
 
 RUN apk add --no-cache \
     bash \
     curl \
-    nginx \
     libzip-dev \
     oniguruma-dev \
     postgresql-dev \

@@ -34,6 +34,4 @@ php artisan route:cache
 php artisan view:cache
 php artisan migrate --force
 
-# Start PHP-FPM in background, then nginx in foreground
-php-fpm -D
-exec nginx -g "daemon off;"
+exec php artisan serve --host=0.0.0.0 --port=8080
