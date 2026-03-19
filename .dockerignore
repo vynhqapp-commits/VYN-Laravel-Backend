@@ -7,7 +7,6 @@ storage/framework/cache/*
 storage/framework/sessions/*
 storage/framework/views/*
 .env
-.env.*
 Dockerfile*
 tests
 README.md
