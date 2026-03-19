@@ -8,14 +8,14 @@ RUN composer install \
     --no-scripts \
     --prefer-dist
 
-FROM php:8.3-cli-alpine AS runtime
+FROM php:8.3-fpm-alpine AS runtime
 
 WORKDIR /var/www/html
 
 RUN apk add --no-cache \
     bash \
     curl \
-    git \
+    nginx \
     libzip-dev \
     oniguruma-dev \
     postgresql-dev \
@@ -30,6 +30,8 @@ RUN apk add --no-cache \
     pdo_pgsql \
     pdo_sqlite \
     zip
+
+COPY docker/nginx.conf /etc/nginx/nginx.conf
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 COPY --from=vendor /app/vendor ./vendor

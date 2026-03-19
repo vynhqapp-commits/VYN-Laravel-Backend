@@ -1,7 +1,6 @@
 #!/bin/sh
 set -e
 
-# Write env vars from environment into .env file
 cat > .env << EOF
 APP_NAME="${APP_NAME:-Laravel}"
 APP_ENV="${APP_ENV:-production}"
@@ -35,4 +34,6 @@ php artisan route:cache
 php artisan view:cache
 php artisan migrate --force
 
-exec php artisan serve --host=0.0.0.0 --port=8080
+# Start PHP-FPM in background, then nginx in foreground
+php-fpm -D
+exec nginx -g "daemon off;"
