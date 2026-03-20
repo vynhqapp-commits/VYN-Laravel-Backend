@@ -144,16 +144,18 @@ class PublicBookingController extends Controller
             return $this->success(['slots' => []]);
         }
 
-        $staffIds = StaffSchedule::withoutGlobalScopes()
+        // Fetch staff schedules including their actual working hours for the day
+        $staffSchedules = StaffSchedule::withoutGlobalScopes()
             ->whereHas('staff', fn($q) => $q->withoutGlobalScopes()
                 ->where('tenant_id', $service->tenant_id)
                 ->where('branch_id', $data['branch_id'])
                 ->where('is_active', true))
             ->where('day_of_week', $dayOfWeek)
             ->where('is_day_off', false)
-            ->pluck('staff_id')
-            ->unique();
-        if ($staffIds->isEmpty()) {
+            ->get(['staff_id', 'start_time', 'end_time'])
+            ->keyBy('staff_id');
+
+        if ($staffSchedules->isEmpty()) {
             return $this->success(['slots' => []]);
         }
 
@@ -166,28 +168,46 @@ class PublicBookingController extends Controller
 
         $freeSlots = collect();
 
-        foreach ($staffIds as $staffId) {
+        foreach ($staffSchedules as $staffId => $sched) {
             foreach ($branchWindows as $window) {
-                $start = Carbon::parse($date->toDateString() . ' ' . $window['start_time']);
-                $end = Carbon::parse($date->toDateString() . ' ' . $window['end_time']);
+                // Service availability window bounds
+                $svcStart = Carbon::parse($date->toDateString() . ' ' . $window['start_time']);
+                $svcEnd   = Carbon::parse($date->toDateString() . ' ' . $window['end_time']);
+
+                // Staff's own shift bounds
+                $shiftStart = Carbon::parse($date->toDateString() . ' ' . $sched->start_time);
+                $shiftEnd   = Carbon::parse($date->toDateString() . ' ' . $sched->end_time);
+
+                // Effective window = intersection of service window and staff shift
+                $start = $svcStart->max($shiftStart);
+                $end   = $svcEnd->min($shiftEnd);
+
+                // No overlap between service window and staff shift — skip
+                if ($start->gte($end)) {
+                    continue;
+                }
+
                 $stepMinutes = (int) ($window['slot_minutes'] ?? 30);
                 $staffBooked = $booked->where('staff_id', $staffId);
-                $cursor = $start->copy();
+                $cursor      = $start->copy();
 
+                // Only generate slots that finish before or at the effective end (duration buffer)
                 while ($cursor->copy()->addMinutes($duration)->lte($end)) {
-                    $slotEnd = $cursor->copy()->addMinutes($duration);
+                    $slotEnd  = $cursor->copy()->addMinutes($duration);
                     $conflict = $staffBooked->first(function ($appt) use ($cursor, $slotEnd) {
                         $aStart = Carbon::parse($appt->starts_at);
-                        $aEnd = Carbon::parse($appt->ends_at);
+                        $aEnd   = Carbon::parse($appt->ends_at);
                         return $cursor->lt($aEnd) && $slotEnd->gt($aStart);
                     });
 
                     if (!$conflict) {
-                        $key = $cursor->toISOString();
+                        $key = $cursor->format('Y-m-d\TH:i:s');
                         if (!$freeSlots->has($key)) {
                             $freeSlots->put($key, [
-                                'start' => $cursor->toISOString(),
-                                'end' => $slotEnd->toISOString(),
+                                // No UTC marker: times are naive salon-local times.
+                                // The frontend must NOT apply a timezone offset when displaying.
+                                'start'    => $cursor->format('Y-m-d\TH:i:s'),
+                                'end'      => $slotEnd->format('Y-m-d\TH:i:s'),
                                 'staff_id' => $staffId,
                             ]);
                         }
