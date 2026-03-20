@@ -49,6 +49,18 @@ Route::middleware('auth:api')->group(function () {
 
     /*
     |----------------------------------------------------------------------
+    | Customer Booking Routes (auth only — no X-Tenant required)
+    | Customers query across all tenants via withoutGlobalScopes()
+    |----------------------------------------------------------------------
+    */
+    Route::middleware('role:customer')->prefix('customer')->group(function () {
+        Route::get('bookings',                        [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'index']);
+        Route::get('bookings/{appointment}',          [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'show']);
+        Route::patch('bookings/{appointment}/cancel', [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'cancel']);
+    });
+
+    /*
+    |----------------------------------------------------------------------
     | Super Admin Routes
     |----------------------------------------------------------------------
     */
@@ -154,12 +166,6 @@ Route::middleware('auth:api')->group(function () {
         Route::middleware('role:salon_owner,manager,staff')->group(function () {
             Route::apiResource('appointments', \App\Http\Controllers\Api\Tenant\AppointmentController::class);
         });
-        Route::middleware('role:customer')->group(function () {
-            Route::get('customer/bookings', [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'index']);
-            Route::get('customer/bookings/{appointment}', [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'show']);
-            Route::patch('customer/bookings/{appointment}/cancel', [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'cancel']);
-        });
-
         // POS / Sales — salon_owner, manager, staff
         Route::middleware('role:salon_owner,manager,staff')->group(function () {
             Route::get('sales', [\App\Http\Controllers\Api\Tenant\SaleController::class, 'index']);
