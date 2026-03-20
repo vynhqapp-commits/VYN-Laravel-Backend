@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\ExpenseResource;
 use App\Models\Expense;
 use App\Models\LedgerEntry;
+use App\Services\LedgerService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -81,6 +82,13 @@ class ExpenseController extends Controller
 
         $tenantId = auth('api')->user()?->tenant_id;
         if (!$tenantId) return $this->error('Tenant required', 422);
+
+        // Soft-lock guard: reject entries into a closed period
+        try {
+            LedgerService::assertNotLocked((int) $tenantId, $data['expense_date']);
+        } catch (\DomainException $e) {
+            return $this->error($e->getMessage(), 422);
+        }
 
         DB::beginTransaction();
         try {

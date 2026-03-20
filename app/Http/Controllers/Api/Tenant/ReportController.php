@@ -17,6 +17,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ReportController extends Controller
 {
@@ -260,6 +261,183 @@ class ReportController extends Controller
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
         }
+    }
+
+    public function profitLossExport(Request $request): StreamedResponse|JsonResponse
+    {
+        try {
+            $data = $request->validate([
+                'period'    => 'required|date_format:Y-m',
+                'branch_id' => 'nullable|exists:branches,id',
+            ]);
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
+        }
+
+        [$year, $month] = array_map('intval', explode('-', $data['period']));
+        $start = Carbon::createFromDate($year, $month, 1)->startOfMonth()->toDateString();
+        $end   = Carbon::createFromDate($year, $month, 1)->endOfMonth()->toDateString();
+
+        $q = LedgerEntry::query()->whereBetween('entry_date', [$start, $end]);
+        if (!empty($data['branch_id'])) $q->where('branch_id', $data['branch_id']);
+        $entries = $q->get(['type', 'category', 'amount']);
+
+        $revenue          = (float) $entries->where('type', 'revenue')->sum('amount');
+        $refunds          = (float) $entries->where('type', 'refund')->sum('amount');
+        $expenses         = (float) $entries->where('type', 'expense')->sum('amount');
+        $commissionFilter = fn ($e) => (string) $e->type === 'expense' && in_array((string) ($e->category ?? ''), ['staff_commission', 'staff_tips'], true);
+        $commissionAmt    = (float) $entries->filter($commissionFilter)->sum('amount');
+        $commissionRevAmt = (float) $entries->filter(fn ($e) => (string) $e->type === 'refund' && in_array((string) ($e->category ?? ''), ['staff_commission', 'staff_tips'], true))->sum('amount');
+        $commission       = $commissionAmt + $commissionRevAmt;
+        $operatingExpense = $expenses - (float) $entries->filter($commissionFilter)->sum('amount');
+        $netRevenue       = $revenue + $refunds;
+        $profit           = $netRevenue - $operatingExpense - $commission;
+
+        $byCategory = LedgerEntry::query()
+            ->select('type', 'category', DB::raw('SUM(amount) as total'))
+            ->whereBetween('entry_date', [$start, $end])
+            ->when(!empty($data['branch_id']), fn ($qq) => $qq->where('branch_id', $data['branch_id']))
+            ->groupBy('type', 'category')
+            ->orderBy('type')->orderBy('category')
+            ->get();
+
+        $period = $data['period'];
+
+        return response()->streamDownload(function () use ($period, $netRevenue, $operatingExpense, $commission, $profit, $byCategory) {
+            $fp = fopen('php://output', 'w');
+
+            fputcsv($fp, ['Profit & Loss Report — ' . $period]);
+            fputcsv($fp, []);
+            fputcsv($fp, ['Summary']);
+            fputcsv($fp, ['Metric', 'Amount']);
+            fputcsv($fp, ['Net Revenue',        number_format($netRevenue, 2, '.', '')]);
+            fputcsv($fp, ['Operating Expenses', number_format($operatingExpense, 2, '.', '')]);
+            fputcsv($fp, ['Commission & Tips',  number_format($commission, 2, '.', '')]);
+            fputcsv($fp, ['Net Profit',         number_format($profit, 2, '.', '')]);
+            fputcsv($fp, []);
+            fputcsv($fp, ['Detail by Category']);
+            fputcsv($fp, ['Type', 'Category', 'Total']);
+            foreach ($byCategory as $row) {
+                fputcsv($fp, [$row->type, $row->category ?? '', number_format((float) $row->total, 2, '.', '')]);
+            }
+
+            fclose($fp);
+        }, "pnl-{$period}.csv", [
+            'Content-Type'        => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => "attachment; filename=\"pnl-{$period}.csv\"",
+            'Cache-Control'       => 'no-store, no-cache',
+        ]);
+    }
+
+    public function vatExport(Request $request): StreamedResponse|JsonResponse
+    {
+        try {
+            $data = $request->validate([
+                'period'    => 'required|date_format:Y-m',
+                'branch_id' => 'nullable|exists:branches,id',
+            ]);
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
+        }
+
+        [$year, $month] = array_map('intval', explode('-', $data['period']));
+        $start = Carbon::createFromDate($year, $month, 1)->startOfMonth()->toDateString();
+        $end   = Carbon::createFromDate($year, $month, 1)->endOfMonth()->toDateString();
+
+        $tenantId = auth('api')->user()?->tenant_id;
+        $tenant   = $tenantId ? Tenant::query()->find($tenantId) : null;
+        $vatRate  = $tenant?->vat_rate !== null ? (float) $tenant->vat_rate : null;
+
+        $q = LedgerEntry::query()
+            ->whereIn('type', ['revenue', 'refund'])
+            ->whereBetween('entry_date', [$start, $end]);
+        if (!empty($data['branch_id'])) $q->where('branch_id', $data['branch_id']);
+
+        $totalRevenue = (float) $q->sum('amount');
+        $estimatedVat = ($vatRate !== null && $vatRate > 0) ? (float) $q->sum('tax_amount') : null;
+
+        $period = $data['period'];
+
+        return response()->streamDownload(function () use ($period, $totalRevenue, $vatRate, $estimatedVat) {
+            $fp = fopen('php://output', 'w');
+
+            fputcsv($fp, ['VAT Report — ' . $period]);
+            fputcsv($fp, []);
+            fputcsv($fp, ['Metric', 'Value']);
+            fputcsv($fp, ['Period',         $period]);
+            fputcsv($fp, ['Total Revenue',  number_format($totalRevenue, 2, '.', '')]);
+            fputcsv($fp, ['VAT Rate (%)',   $vatRate !== null ? number_format($vatRate, 2, '.', '') : 'N/A']);
+            fputcsv($fp, ['Estimated VAT',  $estimatedVat !== null ? number_format($estimatedVat, 2, '.', '') : 'N/A']);
+
+            fclose($fp);
+        }, "vat-{$period}.csv", [
+            'Content-Type'        => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => "attachment; filename=\"vat-{$period}.csv\"",
+            'Cache-Control'       => 'no-store, no-cache',
+        ]);
+    }
+
+    public function paymentBreakdownExport(Request $request): StreamedResponse|JsonResponse
+    {
+        try {
+            $data = $request->validate([
+                'from'      => 'required|date_format:Y-m-d',
+                'to'        => 'required|date_format:Y-m-d|after_or_equal:from',
+                'branch_id' => 'nullable|exists:branches,id',
+            ]);
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
+        }
+
+        $from = Carbon::parse($data['from'])->startOfDay();
+        $to   = Carbon::parse($data['to'])->endOfDay();
+
+        $q = Payment::query()
+            ->where('status', 'completed')
+            ->whereBetween('created_at', [$from, $to]);
+
+        if (!empty($data['branch_id'])) {
+            $branchId = (int) $data['branch_id'];
+            $q->whereHas('invoice', fn ($qq) => $qq->where('branch_id', $branchId));
+        }
+
+        $payments = $q->get(['method', 'amount', 'created_at']);
+
+        $byMethod = [];
+        foreach ($payments as $p) {
+            $method             = (string) $p->method;
+            $byMethod[$method]  = ($byMethod[$method] ?? 0) + (float) $p->amount;
+        }
+
+        $fromStr = $data['from'];
+        $toStr   = $data['to'];
+
+        return response()->streamDownload(function () use ($fromStr, $toStr, $byMethod, $payments) {
+            $fp = fopen('php://output', 'w');
+
+            fputcsv($fp, ["Payment Breakdown — {$fromStr} to {$toStr}"]);
+            fputcsv($fp, []);
+            fputcsv($fp, ['Payment Method', 'Total Amount', 'Transactions']);
+
+            $countByMethod = [];
+            foreach ($payments as $p) {
+                $m = (string) $p->method;
+                $countByMethod[$m] = ($countByMethod[$m] ?? 0) + 1;
+            }
+
+            foreach ($byMethod as $method => $total) {
+                fputcsv($fp, [$method, number_format($total, 2, '.', ''), $countByMethod[$method] ?? 0]);
+            }
+
+            fputcsv($fp, []);
+            fputcsv($fp, ['Total Transactions', '', $payments->count()]);
+
+            fclose($fp);
+        }, "payments-{$fromStr}-{$toStr}.csv", [
+            'Content-Type'        => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => "attachment; filename=\"payments-{$fromStr}-{$toStr}.csv\"",
+            'Cache-Control'       => 'no-store, no-cache',
+        ]);
     }
 
     public function margins(Request $request): JsonResponse

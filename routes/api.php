@@ -203,11 +203,20 @@ Route::middleware('auth:api')->group(function () {
         // Reports — salon_owner, manager, staff
         Route::middleware('role:salon_owner,manager,staff')->group(function () {
             Route::get('reports/profit-loss', [\App\Http\Controllers\Api\Tenant\ReportController::class, 'profitLoss']);
+            Route::get('reports/profit-loss/export', [\App\Http\Controllers\Api\Tenant\ReportController::class, 'profitLossExport']);
             Route::get('reports/vat', [\App\Http\Controllers\Api\Tenant\ReportController::class, 'vat']);
+            Route::get('reports/vat/export', [\App\Http\Controllers\Api\Tenant\ReportController::class, 'vatExport']);
             Route::get('reports/payment-breakdown', [\App\Http\Controllers\Api\Tenant\ReportController::class, 'paymentBreakdown']);
+            Route::get('reports/payment-breakdown/export', [\App\Http\Controllers\Api\Tenant\ReportController::class, 'paymentBreakdownExport']);
             Route::get('reports/inventory-movement', [\App\Http\Controllers\Api\Tenant\ReportController::class, 'inventoryMovement']);
             Route::get('reports/low-stock', [\App\Http\Controllers\Api\Tenant\ReportController::class, 'lowStock']);
             Route::get('reports/margins', [\App\Http\Controllers\Api\Tenant\ReportController::class, 'margins']);
+        });
+
+        // Monthly Closing — salon_owner, manager
+        Route::middleware('role:salon_owner,manager')->group(function () {
+            Route::get('monthly-closings', [\App\Http\Controllers\Api\Tenant\MonthlyClosingController::class, 'index']);
+            Route::post('monthly-closings/close', [\App\Http\Controllers\Api\Tenant\MonthlyClosingController::class, 'close']);
         });
 
         // Commissions — salon_owner, manager, staff

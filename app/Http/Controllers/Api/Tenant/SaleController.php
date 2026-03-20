@@ -18,6 +18,7 @@ use App\Models\CommissionRule;
 use App\Models\TipAllocation;
 use App\Models\DebtLedgerEntry;
 use App\Services\AuditLogger;
+use App\Services\LedgerService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -157,6 +158,13 @@ class SaleController extends Controller
 
         $tenantId = auth('api')->user()?->tenant_id;
         if (!$tenantId) return $this->error('Tenant required', 422);
+
+        // Soft-lock guard: reject entries into a closed period
+        try {
+            LedgerService::assertNotLocked((int) $tenantId, now()->toDateString());
+        } catch (\DomainException $e) {
+            return $this->error($e->getMessage(), 422);
+        }
 
         $tenant = Tenant::query()->find($tenantId);
         $vatRate = $tenant?->vat_rate !== null ? (float) $tenant->vat_rate : null;
