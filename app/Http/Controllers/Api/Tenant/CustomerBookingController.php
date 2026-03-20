@@ -15,7 +15,18 @@ class CustomerBookingController extends Controller
         $userId = auth('api')->id();
         if (!$userId) return $this->error('Unauthenticated', 401);
 
-        // Look up all Customer records linked to this user across all tenants
+        $userEmail = auth('api')->user()?->email;
+
+        // Auto-link any unlinked Customer records that share the same email —
+        // this makes pre-registration guest bookings appear immediately after sign-up.
+        if ($userEmail) {
+            Customer::withoutGlobalScopes()
+                ->whereNull('user_id')
+                ->where('email', $userEmail)
+                ->update(['user_id' => $userId]);
+        }
+
+        // Collect Customer IDs owned by this user (across all tenants)
         $customerIds = Customer::withoutGlobalScopes()
             ->where('user_id', $userId)
             ->pluck('id');
@@ -24,9 +35,16 @@ class CustomerBookingController extends Controller
             return $this->success(['bookings' => []]);
         }
 
+        // Eager-load relations with withoutGlobalScopes() so tenant-scoped models
+        // resolve correctly for bookings that belong to any tenant.
         $bookings = Appointment::withoutGlobalScopes()
             ->whereIn('customer_id', $customerIds)
-            ->with(['branch', 'staff', 'services.service'])
+            ->with([
+                'branch'  => fn ($q) => $q->withoutGlobalScopes(),
+                'staff'   => fn ($q) => $q->withoutGlobalScopes(),
+                'services' => fn ($q) => $q->withoutGlobalScopes()
+                    ->with(['service' => fn ($sq) => $sq->withoutGlobalScopes()]),
+            ])
             ->latest('starts_at')
             ->get();
 
@@ -39,7 +57,12 @@ class CustomerBookingController extends Controller
         if ($owned !== true) return $owned;
 
         return $this->success([
-            'booking' => $appointment->load(['branch', 'staff', 'services.service']),
+            'booking' => $appointment->load([
+                'branch'  => fn ($q) => $q->withoutGlobalScopes(),
+                'staff'   => fn ($q) => $q->withoutGlobalScopes(),
+                'services' => fn ($q) => $q->withoutGlobalScopes()
+                    ->with(['service' => fn ($sq) => $sq->withoutGlobalScopes()]),
+            ]),
         ]);
     }
 
@@ -60,7 +83,14 @@ class CustomerBookingController extends Controller
         $appointment->update(['status' => 'cancelled']);
 
         return $this->success(
-            ['booking' => $appointment->fresh()->load(['branch', 'staff', 'services.service'])],
+            [
+                'booking' => $appointment->fresh()->load([
+                    'branch'  => fn ($q) => $q->withoutGlobalScopes(),
+                    'staff'   => fn ($q) => $q->withoutGlobalScopes(),
+                    'services' => fn ($q) => $q->withoutGlobalScopes()
+                        ->with(['service' => fn ($sq) => $sq->withoutGlobalScopes()]),
+                ]),
+            ],
             'Booking cancelled'
         );
     }
@@ -70,7 +100,6 @@ class CustomerBookingController extends Controller
         $userId = auth('api')->id();
         if (!$userId) return $this->error('Unauthenticated', 401);
 
-        // The appointment must belong to a Customer record linked to this user
         $ownsCustomer = Customer::withoutGlobalScopes()
             ->where('user_id', $userId)
             ->where('id', $appointment->customer_id)
