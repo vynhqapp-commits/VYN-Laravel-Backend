@@ -323,6 +323,18 @@ class PublicBookingController extends Controller
                 ]);
             }
 
+            // Best-effort: link user_id when a logged-in customer books
+            if ($request->bearerToken() && !$customer->user_id) {
+                try {
+                    $authUser = auth('api')->user();
+                    if ($authUser && $authUser->hasRole('customer')) {
+                        $customer->update(['user_id' => $authUser->id]);
+                    }
+                } catch (\Throwable) {
+                    // Never fail the booking because of this
+                }
+            }
+
             $appointment = Appointment::withoutGlobalScopes()->create([
                 'tenant_id' => $data['tenant_id'],
                 'branch_id' => $data['branch_id'],

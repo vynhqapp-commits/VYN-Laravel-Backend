@@ -12,22 +12,20 @@ class CustomerBookingController extends Controller
 {
     public function index(): JsonResponse
     {
-        $tenantId = auth('api')->user()?->tenant_id;
         $userId = auth('api')->id();
-        if (!$tenantId || !$userId) return $this->error('Tenant required', 422);
+        if (!$userId) return $this->error('Unauthenticated', 401);
 
-        $customer = Customer::query()
-            ->where('tenant_id', $tenantId)
+        // Look up all Customer records linked to this user across all tenants
+        $customerIds = Customer::withoutGlobalScopes()
             ->where('user_id', $userId)
-            ->first();
+            ->pluck('id');
 
-        if (!$customer) {
+        if ($customerIds->isEmpty()) {
             return $this->success(['bookings' => []]);
         }
 
-        $bookings = Appointment::query()
-            ->where('tenant_id', $tenantId)
-            ->where('customer_id', $customer->id)
+        $bookings = Appointment::withoutGlobalScopes()
+            ->whereIn('customer_id', $customerIds)
             ->with(['branch', 'staff', 'services.service'])
             ->latest('starts_at')
             ->get();
@@ -40,7 +38,9 @@ class CustomerBookingController extends Controller
         $owned = $this->ownedByCustomer($appointment);
         if ($owned !== true) return $owned;
 
-        return $this->success(['booking' => $appointment->load(['branch', 'staff', 'services.service'])]);
+        return $this->success([
+            'booking' => $appointment->load(['branch', 'staff', 'services.service']),
+        ]);
     }
 
     public function cancel(Appointment $appointment): JsonResponse
@@ -49,7 +49,7 @@ class CustomerBookingController extends Controller
         if ($owned !== true) return $owned;
 
         if (!in_array((string) $appointment->status, ['scheduled', 'confirmed', 'pending'], true)) {
-            return $this->error('Only scheduled bookings can be cancelled', 422);
+            return $this->error('Only scheduled or confirmed bookings can be cancelled', 422);
         }
 
         $startAt = Carbon::parse($appointment->starts_at);
@@ -59,23 +59,24 @@ class CustomerBookingController extends Controller
 
         $appointment->update(['status' => 'cancelled']);
 
-        return $this->success(['booking' => $appointment->fresh()->load(['branch', 'staff', 'services.service'])], 'Booking cancelled');
+        return $this->success(
+            ['booking' => $appointment->fresh()->load(['branch', 'staff', 'services.service'])],
+            'Booking cancelled'
+        );
     }
 
     private function ownedByCustomer(Appointment $appointment): true|JsonResponse
     {
-        $tenantId = auth('api')->user()?->tenant_id;
         $userId = auth('api')->id();
-        if (!$tenantId || !$userId) return $this->error('Tenant required', 422);
+        if (!$userId) return $this->error('Unauthenticated', 401);
 
-        $customer = Customer::query()
-            ->where('tenant_id', $tenantId)
+        // The appointment must belong to a Customer record linked to this user
+        $ownsCustomer = Customer::withoutGlobalScopes()
             ->where('user_id', $userId)
-            ->first();
+            ->where('id', $appointment->customer_id)
+            ->exists();
 
-        if (!$customer) return $this->error('Customer profile not found', 404);
-
-        if ((int) $appointment->tenant_id !== (int) $tenantId || (int) $appointment->customer_id !== (int) $customer->id) {
+        if (!$ownsCustomer) {
             return $this->error('Not found', 404);
         }
 
