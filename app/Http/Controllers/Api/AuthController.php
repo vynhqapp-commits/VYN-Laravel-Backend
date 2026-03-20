@@ -183,7 +183,9 @@ class AuthController extends Controller
                 ]);
             }
 
-            return $this->success(null, 'OTP sent successfully');
+            return $this->success([
+                'otp' => $otp->code,
+            ], 'OTP sent successfully');
 
         } catch (ValidationException $e) {
             return $this->validationError($e->errors());
