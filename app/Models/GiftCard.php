@@ -9,7 +9,7 @@ class GiftCard extends Model
 {
     use BelongsToTenant;
 
-    protected $fillable = ['tenant_id', 'code', 'initial_balance', 'remaining_balance', 'customer_id', 'expires_at', 'status'];
+    protected $fillable = ['tenant_id', 'code', 'initial_balance', 'remaining_balance', 'currency', 'customer_id', 'expires_at', 'status'];
 
     protected $casts = ['initial_balance' => 'decimal:2', 'remaining_balance' => 'decimal:2', 'expires_at' => 'date'];
 

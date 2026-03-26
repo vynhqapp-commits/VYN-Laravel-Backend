@@ -47,6 +47,10 @@ Route::middleware('auth:api')->group(function () {
     Route::get('me',       [AuthController::class, 'me']);
     Route::post('logout',  [AuthController::class, 'logout']);
 
+    // Profile — all authenticated roles
+    Route::patch('profile',                [AuthController::class, 'updateProfile']);
+    Route::post('profile/change-password', [AuthController::class, 'changePassword']);
+
     /*
     |----------------------------------------------------------------------
     | Customer Booking Routes (auth only — no X-Tenant required)
@@ -225,11 +229,24 @@ Route::middleware('auth:api')->group(function () {
             Route::post('monthly-closings/close', [\App\Http\Controllers\Api\Tenant\MonthlyClosingController::class, 'close']);
         });
 
+        // Franchise / Multi-location analytics — salon_owner only
+        Route::middleware('role:salon_owner')->group(function () {
+            Route::get('analytics/franchise', [\App\Http\Controllers\Api\Tenant\FranchiseAnalyticsController::class, 'kpis']);
+        });
+
         // Commissions — salon_owner, manager, staff
         Route::middleware('role:salon_owner,manager,staff')->group(function () {
             Route::get('commissions', [\App\Http\Controllers\Api\Tenant\CommissionController::class, 'index']);
             Route::get('commissions/{commission}', [\App\Http\Controllers\Api\Tenant\CommissionController::class, 'show']);
             Route::get('commissions/staff/{staff}/earnings', [\App\Http\Controllers\Api\Tenant\CommissionController::class, 'staffEarnings']);
         });
+
+        // Gift Cards
+        Route::post('gift-cards/verify', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'verify']);
+        Route::get('gift-cards', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'index']);
+        Route::post('gift-cards', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'store']);
+        Route::get('gift-cards/{card}', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'show']);
+        Route::post('gift-cards/{card}/redeem', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'redeem']);
+        Route::post('gift-cards/{card}/void', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'void']);
     });
 });

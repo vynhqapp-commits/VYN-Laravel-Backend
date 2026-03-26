@@ -263,6 +263,51 @@ class AuthController extends Controller
         }
     }
 
+    public function updateProfile(Request $request)
+    {
+        try {
+            $user = auth('api')->user();
+
+            $data = $request->validate([
+                'name'  => 'sometimes|string|max:100',
+                'email' => 'sometimes|email|max:255|unique:users,email,' . $user->id,
+                'phone' => 'nullable|string|max:30',
+            ]);
+
+            $user->update($data);
+
+            return $this->success(['user' => new UserResource($user->fresh()->load('roles'))], 'Profile updated');
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
+        } catch (\Throwable $e) {
+            return $this->error($e->getMessage());
+        }
+    }
+
+    public function changePassword(Request $request)
+    {
+        try {
+            $user = auth('api')->user();
+
+            $data = $request->validate([
+                'current_password' => 'required|string',
+                'new_password'     => 'required|string|min:8|confirmed',
+            ]);
+
+            if (!Hash::check($data['current_password'], $user->password)) {
+                return $this->error('Current password is incorrect', 422);
+            }
+
+            $user->update(['password' => Hash::make($data['new_password'])]);
+
+            return $this->success(null, 'Password changed successfully');
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
+        } catch (\Throwable $e) {
+            return $this->error($e->getMessage());
+        }
+    }
+
     private function tokenPayload(string $token): array
     {
         $user = auth('api')->user()->load('roles');
