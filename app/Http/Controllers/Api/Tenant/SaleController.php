@@ -17,6 +17,7 @@ use App\Models\CommissionEntry;
 use App\Models\CommissionRule;
 use App\Models\TipAllocation;
 use App\Models\DebtLedgerEntry;
+use App\Models\CustomerServicePackage;
 use App\Services\AuditLogger;
 use App\Services\LedgerService;
 use Carbon\Carbon;
@@ -286,9 +287,10 @@ class SaleController extends Controller
             ]);
 
             // Revenue classification (services vs products vs tips vs gift cards) into ledger
-            $invoiceItems = InvoiceItem::where('invoice_id', $invoice->id)->get(['itemable_type', 'total']);
+            $invoiceItems = InvoiceItem::where('invoice_id', $invoice->id)->get(['itemable_type', 'total', 'quantity']);
             $servicesRevenue = (float) $invoiceItems->where('itemable_type', Service::class)->sum('total');
             $productsRevenue = (float) $invoiceItems->where('itemable_type', Product::class)->sum('total');
+            $serviceQty = (int) $invoiceItems->where('itemable_type', Service::class)->sum('quantity');
 
             $ledgerRows = [
                 ['category' => 'services', 'amount' => $servicesRevenue],
@@ -350,6 +352,44 @@ class SaleController extends Controller
             if ($appointment) {
                 if ($status === 'paid') {
                     $appointment->update(['status' => 'completed']);
+
+                    // Auto-consumption of customer service packages based on service units sold.
+                    // Consumes "latest expires_at first" (non-null first).
+                    $customerId = $appointment->customer_id;
+                    if (!empty($customerId) && $serviceQty > 0) {
+                        $today = Carbon::today();
+                        $remainingToConsume = $serviceQty;
+
+                        $packages = CustomerServicePackage::query()
+                            ->where('customer_id', $customerId)
+                            ->where('remaining_services', '>', 0)
+                            ->where('status', 'active')
+                            ->where(function ($q) use ($today) {
+                                $q->whereNull('expires_at')
+                                    ->orWhereDate('expires_at', '>=', $today);
+                            })
+                            ->orderByRaw('expires_at IS NULL ASC')
+                            ->orderByDesc('expires_at')
+                            ->orderByDesc('id')
+                            ->lockForUpdate()
+                            ->get();
+
+                        foreach ($packages as $pkg) {
+                            if ($remainingToConsume <= 0) break;
+
+                            $take = min($remainingToConsume, (int) $pkg->remaining_services);
+                            if ($take <= 0) continue;
+
+                            $pkg->remaining_services = (int) $pkg->remaining_services - $take;
+                            if ($pkg->remaining_services <= 0) {
+                                $pkg->remaining_services = 0;
+                                $pkg->status = 'exhausted';
+                            }
+                            $pkg->save();
+
+                            $remainingToConsume -= $take;
+                        }
+                    }
                 }
             }
 

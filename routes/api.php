@@ -164,6 +164,14 @@ Route::middleware('auth:api')->group(function () {
                 ->except(['destroy']);
             Route::get('customers/{customer}/notes',  [\App\Http\Controllers\Api\Tenant\CustomerController::class, 'notes']);
             Route::post('customers/{customer}/notes', [\App\Http\Controllers\Api\Tenant\CustomerController::class, 'addNote']);
+
+            // CRM tracking (packages, memberships, per-customer stats)
+            Route::get('customers/{customer}/packages', [\App\Http\Controllers\Api\Tenant\CustomerCrmController::class, 'packages']);
+            Route::get('customers/{customer}/memberships', [\App\Http\Controllers\Api\Tenant\CustomerCrmController::class, 'memberships']);
+            Route::get('customers/{customer}/stats', [\App\Http\Controllers\Api\Tenant\CustomerCrmController::class, 'stats']);
+
+            Route::post('customers/{customer}/packages/{package}/consume', [\App\Http\Controllers\Api\Tenant\CustomerCrmController::class, 'consumePackage']);
+            Route::post('customers/{customer}/memberships/{membership}/renew', [\App\Http\Controllers\Api\Tenant\CustomerCrmController::class, 'renewMembership']);
         });
 
         // Appointments — salon_owner, manager, staff
