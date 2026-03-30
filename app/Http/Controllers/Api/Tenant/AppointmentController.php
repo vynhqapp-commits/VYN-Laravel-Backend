@@ -147,12 +147,17 @@ class AppointmentController extends Controller
             $data = $request->validate([
                 'status' => 'sometimes|in:' . implode(',', self::STATUSES),
                 'notes'  => 'nullable|string',
+                // Optional rescheduling (do not change status unless `status` is explicitly provided)
+                'start_time' => 'sometimes|required_with:end_time|date',
+                'end_time' => 'sometimes|required_with:start_time|date|after:start_time',
             ]);
         } catch (ValidationException $e) {
             return $this->validationError($e->errors());
         }
 
         try {
+            $isReschedule = array_key_exists('start_time', $data) || array_key_exists('end_time', $data);
+
             if (array_key_exists('status', $data)) {
                 $from = (string) $appointment->status;
                 $to = (string) $data['status'];
@@ -164,12 +169,28 @@ class AppointmentController extends Controller
 
             DB::beginTransaction();
 
+            if ($isReschedule) {
+                // Only allow rescheduling for active appointments.
+                $active = ['pending', 'scheduled', 'confirmed', 'checked_in'];
+                if (! in_array((string) $appointment->status, $active, true)) {
+                    return $this->error('Appointment cannot be rescheduled in its current status.', 422);
+                }
+            }
+
             // If completing, deduct inventory for service recipes (BOM) before we finalize status.
             if (array_key_exists('status', $data) && (string) $data['status'] === 'completed' && (string) $appointment->status !== 'completed') {
                 $this->deductInventoryForAppointment($appointment);
             }
 
-            $appointment->update($data);
+            $updateData = $data;
+            if ($isReschedule) {
+                // Map frontend payload into model fields.
+                $updateData['starts_at'] = Carbon::parse((string) $data['start_time']);
+                $updateData['ends_at'] = Carbon::parse((string) $data['end_time']);
+                unset($updateData['start_time'], $updateData['end_time']);
+            }
+
+            $appointment->update($updateData);
 
             DB::commit();
             return $this->success($appointment->load(['branch', 'customer', 'staff', 'services.service']), 'Appointment updated');
