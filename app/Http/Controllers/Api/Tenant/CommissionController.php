@@ -10,6 +10,7 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Validation\Rule;
 
 class CommissionController extends Controller
 {
@@ -17,51 +18,81 @@ class CommissionController extends Controller
     {
         try {
             $rules = CommissionRule::query()->latest()->get();
-            $rows = $rules->map(function (CommissionRule $r) {
-                return [
-                    'id' => (string) $r->id,
-                    'tenant_id' => (string) $r->tenant_id,
-                    'name' => strtoupper((string) $r->type) . ' commission',
-                    'rule_type' => (string) $r->type,
-                    'config' => [
-                        'value' => (string) $r->value,
-                        'tier_threshold' => $r->tier_threshold !== null ? (string) $r->tier_threshold : null,
-                        'staff_id' => $r->staff_id ? (string) $r->staff_id : null,
-                        'service_id' => $r->service_id ? (string) $r->service_id : null,
-                        'is_active' => (bool) $r->is_active,
-                    ],
-                    'staff_id' => $r->staff_id ? (string) $r->staff_id : null,
-                    'role' => null,
-                ];
-            })->values();
-
-            return $this->success($rows);
+            return $this->success($rules->map(fn($r) => $this->ruleResource($r))->values());
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
         }
     }
 
-    public function show(CommissionRule $commission): JsonResponse
+    private function ruleResource(CommissionRule $rule): array
+    {
+        return [
+            'id'              => (string) $rule->id,
+            'tenant_id'       => (string) $rule->tenant_id,
+            'name'            => strtoupper((string) $rule->type) . ' commission',
+            'rule_type'       => (string) $rule->type,
+            'type'            => (string) $rule->type,
+            'value'           => (float) $rule->value,
+            'tier_threshold'  => $rule->tier_threshold !== null ? (float) $rule->tier_threshold : null,
+            'staff_id'        => $rule->staff_id ? (string) $rule->staff_id : null,
+            'service_id'      => $rule->service_id ? (string) $rule->service_id : null,
+            'is_active'       => (bool) $rule->is_active,
+            'created_at'      => $rule->created_at,
+        ];
+    }
+
+    public function store(Request $request): JsonResponse
     {
         try {
-            return $this->success([
-                'id' => (string) $commission->id,
-                'tenant_id' => (string) $commission->tenant_id,
-                'name' => strtoupper((string) $commission->type) . ' commission',
-                'rule_type' => (string) $commission->type,
-                'config' => [
-                    'value' => (string) $commission->value,
-                    'tier_threshold' => $commission->tier_threshold !== null ? (string) $commission->tier_threshold : null,
-                    'staff_id' => $commission->staff_id ? (string) $commission->staff_id : null,
-                    'service_id' => $commission->service_id ? (string) $commission->service_id : null,
-                    'is_active' => (bool) $commission->is_active,
-                ],
-                'staff_id' => $commission->staff_id ? (string) $commission->staff_id : null,
-                'role' => null,
+            $data = $request->validate([
+                'type'            => ['required', Rule::in(['percent_service', 'percent_product', 'flat_per_service', 'tiered'])],
+                'value'           => 'required|numeric|min:0.01',
+                'tier_threshold'  => 'nullable|numeric|min:0',
+                'staff_id'        => 'nullable|exists:staff,id',
+                'service_id'      => 'nullable|exists:services,id',
+                'is_active'       => 'boolean',
             ]);
-        } catch (\Throwable $e) {
-            return $this->error($e->getMessage());
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
         }
+
+        $rule = CommissionRule::create(array_merge($data, [
+            'tenant_id' => auth()->user()->tenant_id,
+            'is_active' => $data['is_active'] ?? true,
+        ]));
+
+        return $this->success($this->ruleResource($rule), 201);
+    }
+
+    public function update(Request $request, CommissionRule $commission): JsonResponse
+    {
+        try {
+            $data = $request->validate([
+                'type'           => ['sometimes', Rule::in(['percent_service', 'percent_product', 'flat_per_service', 'tiered'])],
+                'value'          => 'sometimes|numeric|min:0.01',
+                'tier_threshold' => 'nullable|numeric|min:0',
+                'staff_id'       => 'nullable|exists:staff,id',
+                'service_id'     => 'nullable|exists:services,id',
+                'is_active'      => 'boolean',
+            ]);
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
+        }
+
+        $commission->update($data);
+
+        return $this->success($this->ruleResource($commission->fresh()));
+    }
+
+    public function destroy(CommissionRule $commission): JsonResponse
+    {
+        $commission->delete();
+        return response()->json(null, 204);
+    }
+
+    public function show(CommissionRule $commission): JsonResponse
+    {
+        return $this->success($this->ruleResource($commission));
     }
 
     public function staffEarnings(Request $request, int $staffId): JsonResponse

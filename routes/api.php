@@ -237,8 +237,11 @@ Route::middleware('auth:api')->group(function () {
         // Commissions — salon_owner, manager, staff
         Route::middleware('role:salon_owner,manager,staff')->group(function () {
             Route::get('commissions', [\App\Http\Controllers\Api\Tenant\CommissionController::class, 'index']);
-            Route::get('commissions/{commission}', [\App\Http\Controllers\Api\Tenant\CommissionController::class, 'show']);
+            Route::post('commissions/rules', [\App\Http\Controllers\Api\Tenant\CommissionController::class, 'store']);
+            Route::put('commissions/rules/{commission}', [\App\Http\Controllers\Api\Tenant\CommissionController::class, 'update']);
+            Route::delete('commissions/rules/{commission}', [\App\Http\Controllers\Api\Tenant\CommissionController::class, 'destroy']);
             Route::get('commissions/staff/{staff}/earnings', [\App\Http\Controllers\Api\Tenant\CommissionController::class, 'staffEarnings']);
+            Route::get('commissions/{commission}', [\App\Http\Controllers\Api\Tenant\CommissionController::class, 'show']);
         });
 
         // Gift Cards
@@ -248,5 +251,13 @@ Route::middleware('auth:api')->group(function () {
         Route::get('gift-cards/{card}', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'show']);
         Route::post('gift-cards/{card}/redeem', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'redeem']);
         Route::post('gift-cards/{card}/void', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'void']);
+
+        // Invoices
+        Route::get('invoices', [\App\Http\Controllers\Api\Tenant\InvoiceController::class, 'index']);
+        Route::get('invoices/{invoice}', [\App\Http\Controllers\Api\Tenant\InvoiceController::class, 'show']);
+        Route::post('invoices/{invoice}/void', [\App\Http\Controllers\Api\Tenant\InvoiceController::class, 'void']);
+
+        // Ledger
+        Route::get('ledger', [\App\Http\Controllers\Api\Tenant\LedgerController::class, 'index']);
     });
 });
