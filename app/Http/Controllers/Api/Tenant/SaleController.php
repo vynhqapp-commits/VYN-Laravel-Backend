@@ -11,6 +11,7 @@ use App\Models\LedgerEntry;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Service;
+use App\Models\Staff;
 use App\Models\Tenant;
 use App\Models\CashDrawer;
 use App\Models\CommissionEntry;
@@ -18,12 +19,14 @@ use App\Models\CommissionRule;
 use App\Models\TipAllocation;
 use App\Models\DebtLedgerEntry;
 use App\Models\CustomerServicePackage;
+use App\Mail\SaleReceiptMail;
 use App\Services\AuditLogger;
 use App\Services\LedgerService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
 class SaleController extends Controller
@@ -100,12 +103,19 @@ class SaleController extends Controller
     public function show(Invoice $sale): JsonResponse
     {
         try {
-            $sale->load(['branch', 'items', 'payments']);
+            $sale->load(['branch', 'items', 'payments', 'customer']);
 
             $receipt = [
                 'id' => (string) $sale->id,
                 'total' => (string) $sale->total,
+                'discount' => (string) $sale->discount,
                 'Location' => $sale->branch ? ['name' => $sale->branch->name] : null,
+                'Customer' => $sale->customer ? [
+                    'id' => (string) $sale->customer->id,
+                    'name' => (string) $sale->customer->name,
+                    'email' => $sale->customer->email,
+                    'phone' => $sale->customer->phone,
+                ] : null,
                 'TransactionItems' => $sale->items->map(function (InvoiceItem $it) {
                     $service = $it->itemable_type === Service::class ? $it->itemable : null;
                     $product = $it->itemable_type === Product::class ? $it->itemable : null;
@@ -145,9 +155,16 @@ class SaleController extends Controller
                 'items.*.unit_price' => 'required|numeric|min:0',
                 // Optional Week-5 revenue classification
                 'tips_amount' => 'nullable|numeric|min:0',
+                'tip_allocation_mode' => 'nullable|in:single,equal_split,custom',
+                'tip_allocations' => 'nullable|array',
+                'tip_allocations.*.staff_id' => 'required_with:tip_allocations|exists:staff,id',
+                'tip_allocations.*.amount' => 'nullable|numeric|min:0',
                 'gift_card_amount' => 'nullable|numeric|min:0',
+                'discount_type' => 'nullable|in:flat,percent',
+                'discount_value' => 'nullable|numeric|min:0',
+                'discount_code' => 'nullable|string|max:64',
                 'payments'    => 'nullable|array',
-                'payments.*.method' => 'required|string',
+                'payments.*.method' => 'required|string|in:cash,card,bank_transfer,wallet,whish,omt,transfer,mobile',
                 'payments.*.amount' => 'required|numeric|min:0',
                 'payments.*.reference' => 'nullable|string|max:255',
                 // Legacy fallback (old clients)
@@ -199,6 +216,15 @@ class SaleController extends Controller
 
             $tipsAmount = isset($data['tips_amount']) ? (float) $data['tips_amount'] : 0.0;
             $giftCardAmount = isset($data['gift_card_amount']) ? (float) $data['gift_card_amount'] : 0.0;
+            $discountType = $data['discount_type'] ?? null;
+            $discountValue = isset($data['discount_value']) ? (float) $data['discount_value'] : 0.0;
+            $discountAmount = 0.0;
+            if ($discountType === 'percent') {
+                $discountAmount = max(0.0, min($subtotal, ($subtotal * $discountValue) / 100.0));
+            } elseif ($discountType === 'flat') {
+                $discountAmount = max(0.0, min($subtotal, $discountValue));
+            }
+            $invoiceTotal = max(0.0, $subtotal - $discountAmount + $tipsAmount + $giftCardAmount);
 
             $invoice = Invoice::create([
                 'tenant_id'      => $tenantId,
@@ -207,12 +233,12 @@ class SaleController extends Controller
                 'appointment_id' => $data['appointment_id'] ?? null,
                 'invoice_number' => 'INV-' . now()->format('Ymd') . '-' . uniqid(),
                 'subtotal'       => $subtotal,
-                'discount'       => 0,
+                'discount'       => $discountAmount,
                 'tax'            => 0,
-                'total'          => $subtotal + $tipsAmount + $giftCardAmount,
+                'total'          => $invoiceTotal,
                 'paid_amount'    => 0,
                 'status'         => 'draft',
-                'notes'          => $data['notes'] ?? null,
+                'notes'          => trim((string) (($data['notes'] ?? '') . (!empty($data['discount_code']) ? (' | promo:' . $data['discount_code']) : ''))) ?: null,
             ]);
 
             foreach ($data['items'] as $it) {
@@ -255,7 +281,22 @@ class SaleController extends Controller
                 if ($amt <= 0) continue;
                 $paid += $amt;
 
-                $method = strtolower(str_replace(' ', '_', (string) $p['method']));
+                $rawMethod = strtolower(str_replace(' ', '_', trim((string) $p['method'])));
+                $methodMap = [
+                    'cash' => 'cash',
+                    'card' => 'card',
+                    'bank' => 'bank_transfer',
+                    'bank_transfer' => 'bank_transfer',
+                    'wallet' => 'wallet',
+                    'whish' => 'whish',
+                    'omt' => 'omt',
+                    'transfer' => 'bank_transfer',
+                    'mobile' => 'wallet',
+                ];
+                $method = $methodMap[$rawMethod] ?? null;
+                if ($method === null) {
+                    throw new \RuntimeException('Unsupported payment method: ' . $rawMethod);
+                }
                 $cashDrawerSessionId = null;
                 if ($method === 'cash') {
                     $drawer = CashDrawer::query()->where('branch_id', $data['branch_id'])->first();
@@ -271,6 +312,14 @@ class SaleController extends Controller
                     'reference' => $p['reference'] ?? null,
                     'status' => 'completed',
                     'cash_drawer_session_id' => $cashDrawerSessionId,
+                ]);
+            }
+
+            if (count($paymentRows) > 1) {
+                AuditLogger::log(auth('api')->id(), $tenantId, 'sale.split_payment', [
+                    'invoice_id' => $invoice->id,
+                    'payment_count' => count($paymentRows),
+                    'methods' => collect($paymentRows)->pluck('method')->values()->all(),
                 ]);
             }
 
@@ -450,41 +499,105 @@ class SaleController extends Controller
                 }
 
                 if ($tipsAmount > 0.009) {
-                    $tip = TipAllocation::create([
-                        'tenant_id' => $tenantId,
-                        'staff_id' => $staffId,
-                        'invoice_id' => $invoice->id,
-                        'amount' => (float) $tipsAmount,
-                        'earned_at' => now(),
-                    ]);
+                    $mode = $data['tip_allocation_mode'] ?? 'single';
+                    $tipRows = collect($data['tip_allocations'] ?? [])->map(function ($r) {
+                        return [
+                            'staff_id' => (int) ($r['staff_id'] ?? 0),
+                            'amount' => isset($r['amount']) ? (float) $r['amount'] : null,
+                        ];
+                    })->filter(fn ($r) => $r['staff_id'] > 0)->values();
 
-                    LedgerEntry::create([
-                        'tenant_id' => $tenantId,
-                        'branch_id' => $invoice->branch_id,
-                        'type' => 'expense',
-                        'category' => 'staff_tips',
-                        'amount' => (float) $tipsAmount,
-                        'tax_amount' => 0,
-                        'reference_type' => TipAllocation::class,
-                        'reference_id' => $tip->id,
-                        'description' => 'Tips allocated to staff',
-                        'entry_date' => now()->toDateString(),
-                        'is_locked' => false,
-                    ]);
+                    $allocations = collect();
+                    if ($mode === 'custom') {
+                        if ($tipRows->isEmpty()) {
+                            throw new \RuntimeException('Custom tip split requires at least one staff allocation');
+                        }
+                        $sum = (float) $tipRows->sum(fn ($r) => (float) ($r['amount'] ?? 0));
+                        if (abs($sum - $tipsAmount) > 0.01) {
+                            throw new \RuntimeException('Custom tip split total must equal tips amount');
+                        }
+                        $allocations = $tipRows->map(fn ($r) => [
+                            'staff_id' => (int) $r['staff_id'],
+                            'amount' => (float) $r['amount'],
+                        ]);
+                    } elseif ($mode === 'equal_split') {
+                        if ($tipRows->isEmpty()) {
+                            throw new \RuntimeException('Equal split requires selected staff');
+                        }
+                        $n = $tipRows->count();
+                        $base = floor((($tipsAmount / $n) * 100)) / 100;
+                        $remaining = round($tipsAmount - ($base * $n), 2);
+                        $allocations = $tipRows->values()->map(function ($r, $idx) use ($base, $remaining) {
+                            return [
+                                'staff_id' => (int) $r['staff_id'],
+                                'amount' => $idx === 0 ? (float) round($base + $remaining, 2) : (float) $base,
+                            ];
+                        });
+                    } else {
+                        $singleStaffId = !empty($appointment->staff_id)
+                            ? (int) $appointment->staff_id
+                            : (int) ($tipRows->first()['staff_id'] ?? 0);
+                        if ($singleStaffId <= 0) {
+                            throw new \RuntimeException('No staff available for tip allocation');
+                        }
+                        $allocations = collect([[
+                            'staff_id' => $singleStaffId,
+                            'amount' => (float) $tipsAmount,
+                        ]]);
+                    }
+
+                    foreach ($allocations as $a) {
+                        $staffExists = Staff::query()
+                            ->where('id', (int) $a['staff_id'])
+                            ->where('tenant_id', $tenantId)
+                            ->exists();
+                        if (!$staffExists) {
+                            throw new \RuntimeException('Invalid tip staff allocation');
+                        }
+
+                        $tip = TipAllocation::create([
+                            'tenant_id' => $tenantId,
+                            'staff_id' => (int) $a['staff_id'],
+                            'invoice_id' => $invoice->id,
+                            'amount' => (float) $a['amount'],
+                            'earned_at' => now(),
+                        ]);
+
+                        LedgerEntry::create([
+                            'tenant_id' => $tenantId,
+                            'branch_id' => $invoice->branch_id,
+                            'type' => 'expense',
+                            'category' => 'staff_tips',
+                            'amount' => (float) $a['amount'],
+                            'tax_amount' => 0,
+                            'reference_type' => TipAllocation::class,
+                            'reference_id' => $tip->id,
+                            'description' => 'Tips allocated to staff',
+                            'entry_date' => now()->toDateString(),
+                            'is_locked' => false,
+                        ]);
+                    }
                 }
             }
 
             DB::commit();
 
-            $invoice->load(['branch', 'payments']);
+            $invoice->load(['branch', 'payments', 'customer']);
 
             return $this->created([
                 'id' => (string) $invoice->id,
                 'tenant_id' => (string) $invoice->tenant_id,
                 'location_id' => (string) $invoice->branch_id,
                 'appointment_id' => $invoice->appointment_id ? (string) $invoice->appointment_id : null,
+                'invoice_number' => $invoice->invoice_number,
                 'total' => (string) $invoice->total,
                 'status' => (string) $invoice->status,
+                'customer' => $invoice->customer ? [
+                    'id' => (string) $invoice->customer->id,
+                    'name' => (string) $invoice->customer->name,
+                    'email' => $invoice->customer->email,
+                    'phone' => $invoice->customer->phone,
+                ] : null,
                 'Payments' => $invoice->payments->map(fn (Payment $p) => [
                     'id' => (string) $p->id,
                     'transaction_id' => (string) $invoice->id,
@@ -620,6 +733,50 @@ class SaleController extends Controller
             DB::rollBack();
             return $this->error($e->getMessage(), 422);
         }
+    }
+
+    public function notifyReceipt(Request $request, Invoice $sale): JsonResponse
+    {
+        try {
+            $data = $request->validate([
+                'channel' => 'required|in:email,sms',
+            ]);
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
+        }
+
+        $sale->load(['customer', 'branch', 'items', 'payments']);
+        if (!$sale->customer) {
+            return $this->error('No customer linked to this sale', 422);
+        }
+
+        if ($data['channel'] === 'email') {
+            if (empty($sale->customer->email)) {
+                return $this->error('Customer email not available', 422);
+            }
+
+            Mail::to($sale->customer->email)->queue(new SaleReceiptMail($sale));
+            AuditLogger::log(auth('api')->id(), (int) $sale->tenant_id, 'sale.receipt_email_queued', [
+                'invoice_id' => $sale->id,
+                'customer_id' => $sale->customer_id,
+            ]);
+
+            return $this->success(['queued' => true], 'Receipt email queued');
+        }
+
+        if (empty($sale->customer->phone)) {
+            return $this->error('Customer phone not available', 422);
+        }
+
+        $smsPreview = 'sms:' . $sale->customer->phone . '?body=' . rawurlencode(
+            'Receipt #' . $sale->invoice_number . ' total ' . number_format((float) $sale->total, 2)
+        );
+        AuditLogger::log(auth('api')->id(), (int) $sale->tenant_id, 'sale.receipt_sms_preview', [
+            'invoice_id' => $sale->id,
+            'customer_id' => $sale->customer_id,
+        ]);
+
+        return $this->success(['sms_url' => $smsPreview], 'SMS link generated');
     }
 }
 

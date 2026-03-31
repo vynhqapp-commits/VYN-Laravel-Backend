@@ -15,6 +15,7 @@ class ServiceResource extends JsonResource
             'description'      => $this->description,
             'duration_minutes' => $this->duration_minutes,
             'price'            => $this->price,
+            'deposit_amount'   => $this->deposit_amount,
             'cost'             => $this->cost,
             'is_active'        => $this->is_active,
             'category'         => new ServiceCategoryResource($this->whenLoaded('category')),

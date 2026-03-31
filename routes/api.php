@@ -183,6 +183,7 @@ Route::middleware('auth:api')->group(function () {
             Route::get('sales', [\App\Http\Controllers\Api\Tenant\SaleController::class, 'index']);
             Route::post('sales', [\App\Http\Controllers\Api\Tenant\SaleController::class, 'store']);
             Route::get('sales/{sale}', [\App\Http\Controllers\Api\Tenant\SaleController::class, 'show']);
+            Route::post('sales/{sale}/receipt/notify', [\App\Http\Controllers\Api\Tenant\SaleController::class, 'notifyReceipt']);
             Route::post('sales/{sale}/refund', [\App\Http\Controllers\Api\Tenant\SaleController::class, 'refund']);
         });
 
