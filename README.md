@@ -57,3 +57,18 @@ If you discover a security vulnerability within Laravel, please send an e-mail t
 ## License
 
 The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+
+## Appointment Reminders (24h + 1h)
+
+This project includes scheduled appointment reminders through email, SMS, and in-app database notifications.
+
+- Scheduler command: `php artisan appointments:send-reminders`
+- Recommended cron (production):
+  - `* * * * * php /path/to/salon-saas-backend/artisan schedule:run >> /dev/null 2>&1`
+- Ensure a queue worker is running:
+  - `php artisan queue:work --queue=default`
+
+The scheduler scans every minute and queues reminder jobs for appointments due in the next configured window (default: 5 minutes) at:
+
+- ~24 hours before `starts_at`
+- ~1 hour before `starts_at`

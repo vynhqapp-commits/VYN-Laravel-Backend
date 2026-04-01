@@ -11,7 +11,12 @@ class Appointment extends Model
 
     protected $fillable = ['tenant_id', 'branch_id', 'customer_id', 'staff_id', 'starts_at', 'ends_at', 'status', 'source', 'notes'];
 
-    protected $casts = ['starts_at' => 'datetime', 'ends_at' => 'datetime'];
+    protected $casts = [
+        'starts_at' => 'datetime',
+        'ends_at' => 'datetime',
+        'reminder_24h_sent_at' => 'datetime',
+        'reminder_1h_sent_at' => 'datetime',
+    ];
 
     public function branch() { return $this->belongsTo(Branch::class); }
     public function customer() { return $this->belongsTo(Customer::class); }
