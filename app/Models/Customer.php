@@ -18,6 +18,7 @@ class Customer extends Model
     public function invoices() { return $this->hasMany(Invoice::class); }
     public function debts() { return $this->hasMany(Debt::class); }
     public function notes() { return $this->hasMany(CustomerNote::class); }
+    public function favorites() { return $this->hasMany(CustomerFavorite::class); }
     public function giftCards() { return $this->hasMany(GiftCard::class); }
     public function memberships() { return $this->hasMany(CustomerMembership::class); }
     public function servicePackages() { return $this->hasMany(CustomerServicePackage::class); }

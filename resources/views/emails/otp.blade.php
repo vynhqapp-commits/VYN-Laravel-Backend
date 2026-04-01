@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 @php
-    $isRtl = $locale === 'ar';
+    $isRtl = $mailLocale === 'ar';
     $dir = $isRtl ? 'rtl' : 'ltr';
 
     $headings = [
@@ -48,7 +48,7 @@
         'fr' => "Si vous n'avez pas demandé ce code, vous pouvez ignorer cet e-mail.",
     ];
 
-    $l = in_array($locale, ['en', 'ar', 'fr']) ? $locale : 'en';
+    $l = in_array($mailLocale, ['en', 'ar', 'fr']) ? $mailLocale : 'en';
     $heading = $headings[$l][$purpose] ?? $headings['en']['login'];
     $body = $bodies[$l][$purpose] ?? $bodies['en']['login'];
     $expiry = $expiries[$l] ?? $expiries['en'];

@@ -38,15 +38,15 @@ class AuthController extends Controller
     {
         try {
             $request->validate([
-                'name'     => 'required|string|max:255',
-                'email'    => 'required|email|unique:users',
+                'name' => 'required|string|max:255',
+                'email' => 'required|email|unique:users',
                 'password' => 'required|min:6|confirmed',
             ]);
 
             $user = User::create([
-                'name'      => $request->name,
-                'email'     => $request->email,
-                'password'  => Hash::make($request->password),
+                'name' => $request->name,
+                'email' => $request->email,
+                'password' => Hash::make($request->password),
                 'tenant_id' => null,
             ]);
 
@@ -67,17 +67,17 @@ class AuthController extends Controller
     {
         try {
             $request->validate([
-                'email'     => 'required|email|unique:users',
-                'password'  => 'required|min:6',
+                'email' => 'required|email|unique:users',
+                'password' => 'required|min:6',
                 'full_name' => 'nullable|string|max:255',
-                'phone'     => 'nullable|string|max:30',
+                'phone' => 'nullable|string|max:30',
             ]);
 
             $user = User::create([
-                'name'      => $request->full_name ?? $request->email,
-                'email'     => $request->email,
-                'password'  => Hash::make($request->password),
-                'phone'     => $request->phone ?? null,
+                'name' => $request->full_name ?? $request->email,
+                'email' => $request->email,
+                'password' => Hash::make($request->password),
+                'phone' => $request->phone ?? null,
                 'tenant_id' => null,
             ]);
 
@@ -99,23 +99,23 @@ class AuthController extends Controller
             $request->validate([
                 'salon_name' => 'required|string|max:255',
                 'salon_address' => 'nullable|string|max:255',
-                'email'      => 'required|email|unique:users',
-                'password'   => 'required|min:6',
-                'full_name'  => 'nullable|string|max:255',
-                'phone'      => 'nullable|string|max:30',
+                'email' => 'required|email|unique:users',
+                'password' => 'required|min:6',
+                'full_name' => 'nullable|string|max:255',
+                'phone' => 'nullable|string|max:30',
             ]);
 
             $tenant = \App\Models\Tenant::create([
-                'name'    => $request->salon_name,
+                'name' => $request->salon_name,
                 'address' => $request->salon_address,
-                'phone'   => $request->phone,
+                'phone' => $request->phone,
             ]);
 
             $user = User::create([
-                'name'      => $request->full_name ?? $request->email,
-                'email'     => $request->email,
-                'password'  => Hash::make($request->password),
-                'phone'     => $request->phone ?? null,
+                'name' => $request->full_name ?? $request->email,
+                'email' => $request->email,
+                'password' => Hash::make($request->password),
+                'phone' => $request->phone ?? null,
                 'tenant_id' => $tenant->id,
             ]);
 
@@ -138,14 +138,14 @@ class AuthController extends Controller
             $email = $request->input('email') ?? $request->input('identifier');
             $request->merge([
                 'identifier' => $email,
-                'type'       => $request->input('type', 'email'),
-                'purpose'    => $request->input('purpose', 'login'),
+                'type' => $request->input('type', 'email'),
+                'purpose' => $request->input('purpose', 'login'),
             ]);
 
             $request->validate([
                 'identifier' => 'required|string',
-                'type'       => 'required|in:phone,email',
-                'purpose'    => 'required|in:login,register,reset_password',
+                'type' => 'required|in:phone,email',
+                'purpose' => 'required|in:login,register,reset_password',
             ]);
 
             OtpCode::where('identifier', $request->identifier)
@@ -157,33 +157,38 @@ class AuthController extends Controller
             $expiresInMinutes = 10;
             $otp = OtpCode::create([
                 'identifier' => $request->identifier,
-                'type'       => $request->type,
-                'purpose'    => $request->purpose,
-                'code'       => str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT),
+                'type' => $request->type,
+                'purpose' => $request->purpose,
+                'code' => str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT),
                 'expires_at' => now()->addMinutes($expiresInMinutes),
             ]);
 
             if ($request->type === 'email') {
                 try {
                     $locale = $request->input('locale', 'en');
+                    Log::info('OTP Code', [
+                        'identifier' => $request->identifier,
+                        'purpose' => $request->purpose,
+                        'code' => $otp->code,
+                    ]);
                     Mail::to($request->identifier)->send(new OtpMail(
                         code: $otp->code,
                         purpose: $request->purpose,
                         expiresInMinutes: $expiresInMinutes,
-                        locale: in_array($locale, ['en', 'ar', 'fr']) ? $locale : 'en',
+                        mailLocale: in_array($locale, ['en', 'ar', 'fr']) ? $locale : 'en',
                     ));
                 } catch (\Throwable $e) {
                     Log::error('OTP email failed', [
                         'identifier' => $request->identifier,
-                        'error'     => $e->getMessage(),
+                        'error' => $e->getMessage(),
                     ]);
                     return $this->error('Failed to send verification email. Please try again.', 500);
                 }
             } else {
                 Log::info('OTP Code (non-email)', [
                     'identifier' => $request->identifier,
-                    'purpose'    => $request->purpose,
-                    'code'       => $otp->code,
+                    'purpose' => $request->purpose,
+                    'code' => $otp->code,
                 ]);
             }
 
@@ -203,15 +208,15 @@ class AuthController extends Controller
             $email = $request->input('email') ?? $request->input('identifier');
             $request->merge([
                 'identifier' => $email,
-                'type'       => $request->input('type', 'email'),
-                'purpose'    => $request->input('purpose', 'login'),
+                'type' => $request->input('type', 'email'),
+                'purpose' => $request->input('purpose', 'login'),
             ]);
 
             $request->validate([
                 'identifier' => 'required|string',
-                'type'       => 'required|in:phone,email',
-                'purpose'    => 'required|in:login,register,reset_password',
-                'code'       => 'required|string|size:6',
+                'type' => 'required|in:phone,email',
+                'purpose' => 'required|in:login,register,reset_password',
+                'code' => 'required|string|size:6',
             ]);
 
             $otp = OtpCode::where('identifier', $request->identifier)
@@ -228,7 +233,7 @@ class AuthController extends Controller
             $otp->update(['is_used' => true]);
 
             $field = $request->type === 'email' ? 'email' : 'phone';
-            $user  = User::where($field, $request->identifier)->first();
+            $user = User::where($field, $request->identifier)->first();
 
             if (!$user) {
                 return $this->success(['verified' => true], 'OTP verified');
@@ -271,7 +276,7 @@ class AuthController extends Controller
             $user = auth('api')->user();
 
             $data = $request->validate([
-                'name'  => 'sometimes|string|max:100',
+                'name' => 'sometimes|string|max:100',
                 'email' => 'sometimes|email|max:255|unique:users,email,' . $user->id,
                 'phone' => 'nullable|string|max:30',
             ]);
@@ -293,7 +298,7 @@ class AuthController extends Controller
 
             $data = $request->validate([
                 'current_password' => 'required|string',
-                'new_password'     => 'required|string|min:8|confirmed',
+                'new_password' => 'required|string|min:8|confirmed',
             ]);
 
             if (!Hash::check($data['current_password'], $user->password)) {
@@ -314,10 +319,10 @@ class AuthController extends Controller
     {
         $user = auth('api')->user()->load('roles');
         return [
-            'token'      => $token,
+            'token' => $token,
             'token_type' => 'bearer',
             'expires_in' => auth('api')->factory()->getTTL() * 60,
-            'user'       => new UserResource($user),
+            'user' => new UserResource($user),
         ];
     }
 }

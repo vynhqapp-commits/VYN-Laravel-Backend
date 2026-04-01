@@ -63,6 +63,9 @@ Route::middleware('auth:api')->group(function () {
         Route::get('bookings/{appointment}',          [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'show']);
         Route::patch('bookings/{appointment}/reschedule', [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'reschedule']);
         Route::patch('bookings/{appointment}/cancel', [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'cancel']);
+        Route::get('favorites', [\App\Http\Controllers\Api\Tenant\CustomerFavoriteController::class, 'index']);
+        Route::post('favorites', [\App\Http\Controllers\Api\Tenant\CustomerFavoriteController::class, 'store']);
+        Route::delete('favorites/{salon}', [\App\Http\Controllers\Api\Tenant\CustomerFavoriteController::class, 'destroy']);
     });
 
     /*

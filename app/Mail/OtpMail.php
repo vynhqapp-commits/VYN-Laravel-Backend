@@ -16,7 +16,7 @@ class OtpMail extends Mailable
         public string $code,
         public string $purpose,
         public int $expiresInMinutes = 10,
-        public string $locale = 'en',
+        public string $mailLocale = 'en',
     ) {}
 
     public function envelope(): Envelope
@@ -27,7 +27,7 @@ class OtpMail extends Mailable
             'fr' => ['register' => 'Votre code de vérification', 'reset_password' => 'Réinitialisez votre mot de passe', 'login' => 'Votre code de connexion'],
         ];
 
-        $localeSubjects = $subjects[$this->locale] ?? $subjects['en'];
+        $localeSubjects = $subjects[$this->mailLocale] ?? $subjects['en'];
         $subject = $localeSubjects[$this->purpose] ?? $localeSubjects['login'];
 
         return new Envelope(
