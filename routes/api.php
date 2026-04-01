@@ -32,6 +32,7 @@ Route::prefix('auth')->group(function () {
 // Public booking (no auth, no tenant header required)
 Route::prefix('public')->middleware('throttle:public')->group(function () {
     Route::get('salons',              [PublicBookingController::class, 'salons']);
+    Route::get('salons/nearby',       [PublicBookingController::class, 'nearbySalons']);
     Route::get('salons/{slug}',       [PublicBookingController::class, 'salon']);
     Route::get('availability',        [PublicBookingController::class, 'availability']);
     Route::post('book',               [PublicBookingController::class, 'book']);
@@ -114,6 +115,7 @@ Route::middleware('auth:api')->group(function () {
         // Branches — salon_owner, manager
         Route::middleware('role:salon_owner,manager')->group(function () {
             Route::apiResource('branches', \App\Http\Controllers\Api\Tenant\BranchController::class);
+            Route::post('salons/{salon}/photos', [\App\Http\Controllers\Api\Tenant\SalonPhotoController::class, 'store']);
         });
 
         // Services & Categories — salon_owner, manager

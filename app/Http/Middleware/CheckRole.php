@@ -12,7 +12,10 @@ class CheckRole
         $user = auth('api')->user();
 
         if (!$user || !$user->hasAnyRole($roles)) {
-            return response()->json(['error' => 'Forbidden'], 403);
+            return response()->json([
+                'success' => false,
+                'message' => 'Forbidden',
+            ], 403);
         }
 
         return $next($request);

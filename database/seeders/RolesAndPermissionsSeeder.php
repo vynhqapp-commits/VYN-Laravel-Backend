@@ -33,6 +33,8 @@ class RolesAndPermissionsSeeder extends Seeder
             'erp.view', 'erp.manage',
             // Settings
             'settings.manage',
+            // Salon profile media
+            'salon.photos.manage',
         ];
 
         foreach ($allPermissions as $permission) {
@@ -41,8 +43,8 @@ class RolesAndPermissionsSeeder extends Seeder
 
         $roles = [
             'super_admin'  => $allPermissions,
-            'salon_owner'  => ['booking.view', 'booking.create', 'booking.update', 'booking.cancel', 'pos.view', 'pos.create', 'pos.refund', 'inventory.view', 'inventory.manage', 'staff.view', 'staff.manage', 'reports.view', 'reports.export', 'erp.view', 'erp.manage', 'settings.manage'],
-            'manager'      => ['booking.view', 'booking.create', 'booking.update', 'booking.cancel', 'pos.view', 'pos.create', 'pos.refund', 'inventory.view', 'inventory.manage', 'staff.view', 'reports.view', 'reports.export', 'erp.view'],
+            'salon_owner'  => ['booking.view', 'booking.create', 'booking.update', 'booking.cancel', 'pos.view', 'pos.create', 'pos.refund', 'inventory.view', 'inventory.manage', 'staff.view', 'staff.manage', 'reports.view', 'reports.export', 'erp.view', 'erp.manage', 'settings.manage', 'salon.photos.manage'],
+            'manager'      => ['booking.view', 'booking.create', 'booking.update', 'booking.cancel', 'pos.view', 'pos.create', 'pos.refund', 'inventory.view', 'inventory.manage', 'staff.view', 'reports.view', 'reports.export', 'erp.view', 'salon.photos.manage'],
             'staff'        => ['booking.view', 'booking.create', 'booking.update', 'pos.view', 'pos.create'],
             'customer'     => ['booking.view', 'booking.create', 'booking.cancel'],
         ];

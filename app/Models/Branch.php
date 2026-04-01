@@ -17,6 +17,9 @@ class Branch extends Model
         'address',
         'timezone',
         'working_hours',
+        'gender_preference',
+        'lat',
+        'lng',
         'is_active',
     ];
 

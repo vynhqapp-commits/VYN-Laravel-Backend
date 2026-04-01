@@ -13,16 +13,27 @@ class BookingConfirmationMail extends Mailable
 {
     use Queueable, SerializesModels;
 
+    public string $bookingLocale;
+
     public function __construct(
         public Appointment $appointment,
-    ) {}
+        string $locale = 'en',
+    ) {
+        $this->bookingLocale = in_array($locale, ['en', 'ar', 'fr']) ? $locale : 'en';
+    }
 
     public function envelope(): Envelope
     {
         $serviceName = $this->appointment->services->first()?->service?->name ?? 'Appointment';
 
+        $subjects = [
+            'en' => "Booking confirmed: {$serviceName}",
+            'ar' => "تم تأكيد الحجز: {$serviceName}",
+            'fr' => "Réservation confirmée : {$serviceName}",
+        ];
+
         return new Envelope(
-            subject: "Booking confirmed: {$serviceName} — " . config('app.name'),
+            subject: ($subjects[$this->bookingLocale] ?? $subjects['en']) . ' — ' . config('app.name'),
         );
     }
 
@@ -33,4 +44,3 @@ class BookingConfirmationMail extends Mailable
         );
     }
 }
-

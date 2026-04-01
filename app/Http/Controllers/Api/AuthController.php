@@ -77,6 +77,7 @@ class AuthController extends Controller
                 'name'      => $request->full_name ?? $request->email,
                 'email'     => $request->email,
                 'password'  => Hash::make($request->password),
+                'phone'     => $request->phone ?? null,
                 'tenant_id' => null,
             ]);
 
@@ -114,6 +115,7 @@ class AuthController extends Controller
                 'name'      => $request->full_name ?? $request->email,
                 'email'     => $request->email,
                 'password'  => Hash::make($request->password),
+                'phone'     => $request->phone ?? null,
                 'tenant_id' => $tenant->id,
             ]);
 
@@ -163,10 +165,12 @@ class AuthController extends Controller
 
             if ($request->type === 'email') {
                 try {
+                    $locale = $request->input('locale', 'en');
                     Mail::to($request->identifier)->send(new OtpMail(
                         code: $otp->code,
                         purpose: $request->purpose,
                         expiresInMinutes: $expiresInMinutes,
+                        locale: in_array($locale, ['en', 'ar', 'fr']) ? $locale : 'en',
                     ));
                 } catch (\Throwable $e) {
                     Log::error('OTP email failed', [
@@ -183,9 +187,7 @@ class AuthController extends Controller
                 ]);
             }
 
-            return $this->success([
-                'otp' => $otp->code,
-            ], 'OTP sent successfully');
+            return $this->success(null, 'OTP sent successfully');
 
         } catch (ValidationException $e) {
             return $this->validationError($e->errors());
