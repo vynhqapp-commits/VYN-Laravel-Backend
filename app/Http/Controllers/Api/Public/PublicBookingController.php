@@ -180,7 +180,13 @@ class PublicBookingController extends Controller
     {
         $tenant = Tenant::where('slug', $slug)
             ->where('subscription_status', '!=', 'suspended')
-            ->with('photos')
+            ->with([
+                'photos',
+                'approvedReviews' => fn ($q) => $q
+                    ->with('customer:id,full_name')
+                    ->latest('id')
+                    ->limit(20),
+            ])
             ->first();
 
         $data = null;

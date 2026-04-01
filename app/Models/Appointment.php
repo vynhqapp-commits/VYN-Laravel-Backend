@@ -23,4 +23,5 @@ class Appointment extends Model
     public function staff() { return $this->belongsTo(Staff::class); }
     public function services() { return $this->hasMany(AppointmentService::class); }
     public function invoice() { return $this->hasOne(Invoice::class); }
+    public function review() { return $this->hasOne(Review::class); }
 }

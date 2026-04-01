@@ -48,6 +48,7 @@ class CustomerBookingController extends Controller
                 'staff'   => fn ($q) => $q->withoutGlobalScopes(),
                 'services' => fn ($q) => $q->withoutGlobalScopes()
                     ->with(['service' => fn ($sq) => $sq->withoutGlobalScopes()]),
+                'review',
             ])
             ->latest('starts_at')
             ->get();
@@ -66,6 +67,7 @@ class CustomerBookingController extends Controller
                 'staff'   => fn ($q) => $q->withoutGlobalScopes(),
                 'services' => fn ($q) => $q->withoutGlobalScopes()
                     ->with(['service' => fn ($sq) => $sq->withoutGlobalScopes()]),
+                'review',
             ]),
         ]);
     }
@@ -93,6 +95,7 @@ class CustomerBookingController extends Controller
                 'staff'   => fn ($q) => $q->withoutGlobalScopes(),
                 'services' => fn ($q) => $q->withoutGlobalScopes()
                     ->with(['service' => fn ($sq) => $sq->withoutGlobalScopes()]),
+                'review',
             ]),
             'policy' => $policy,
         ];
@@ -177,6 +180,7 @@ class CustomerBookingController extends Controller
                 'staff'   => fn ($q) => $q->withoutGlobalScopes(),
                 'services' => fn ($q) => $q->withoutGlobalScopes()
                     ->with(['service' => fn ($sq) => $sq->withoutGlobalScopes()]),
+                'review',
             ]),
             'policy' => $policy,
         ];

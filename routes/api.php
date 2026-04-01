@@ -52,6 +52,12 @@ Route::middleware('auth:api')->group(function () {
     Route::patch('profile',                [AuthController::class, 'updateProfile']);
     Route::post('profile/change-password', [AuthController::class, 'changePassword']);
 
+    // Salon profile — salon_owner only
+    Route::middleware('role:salon_owner')->group(function () {
+        Route::get('salon/profile',   [AuthController::class, 'salonProfile']);
+        Route::patch('salon/profile', [AuthController::class, 'updateSalonProfile']);
+    });
+
     /*
     |----------------------------------------------------------------------
     | Customer Booking Routes (auth only — no X-Tenant required)
@@ -63,6 +69,8 @@ Route::middleware('auth:api')->group(function () {
         Route::get('bookings/{appointment}',          [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'show']);
         Route::patch('bookings/{appointment}/reschedule', [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'reschedule']);
         Route::patch('bookings/{appointment}/cancel', [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'cancel']);
+        Route::post('bookings/{appointment}/review',  [\App\Http\Controllers\Api\Tenant\CustomerReviewController::class, 'store']);
+        Route::get('reviews', [\App\Http\Controllers\Api\Tenant\CustomerReviewController::class, 'index']);
         Route::get('favorites', [\App\Http\Controllers\Api\Tenant\CustomerFavoriteController::class, 'index']);
         Route::post('favorites', [\App\Http\Controllers\Api\Tenant\CustomerFavoriteController::class, 'store']);
         Route::delete('favorites/{salon}', [\App\Http\Controllers\Api\Tenant\CustomerFavoriteController::class, 'destroy']);
@@ -120,6 +128,8 @@ Route::middleware('auth:api')->group(function () {
         Route::middleware('role:salon_owner,manager')->group(function () {
             Route::apiResource('branches', \App\Http\Controllers\Api\Tenant\BranchController::class);
             Route::post('salons/{salon}/photos', [\App\Http\Controllers\Api\Tenant\SalonPhotoController::class, 'store']);
+            Route::get('reviews', [\App\Http\Controllers\Api\Tenant\ReviewModerationController::class, 'index']);
+            Route::patch('reviews/{review}/moderate', [\App\Http\Controllers\Api\Tenant\ReviewModerationController::class, 'moderate']);
         });
 
         // Services & Categories — salon_owner, manager

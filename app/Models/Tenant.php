@@ -54,6 +54,11 @@ class Tenant extends BaseTenant
         return $this->hasMany(Review::class, 'salon_id');
     }
 
+    public function approvedReviews()
+    {
+        return $this->hasMany(Review::class, 'salon_id')->where('status', 'approved');
+    }
+
     public function scopePriceRange(Builder $query, float|int|null $min, float|int|null $max): Builder
     {
         if ($min === null && $max === null) {

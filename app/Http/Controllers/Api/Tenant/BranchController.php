@@ -42,13 +42,16 @@ class BranchController extends Controller
     {
         try {
             $data = $request->validate([
-                'name'     => 'required|string|max:255',
-                'phone'    => 'nullable|string',
-                'contact_email' => 'nullable|email|max:255',
-                'address'  => 'nullable|string',
-                'timezone' => 'nullable|string',
-                'working_hours' => 'nullable|string|max:4000',
-                'is_active' => 'sometimes|boolean',
+                'name'               => 'required|string|max:255',
+                'phone'              => 'nullable|string',
+                'contact_email'      => 'nullable|email|max:255',
+                'address'            => 'nullable|string',
+                'timezone'           => 'nullable|string',
+                'working_hours'      => 'nullable|string|max:4000',
+                'gender_preference'  => 'nullable|in:ladies,gents,unisex',
+                'lat'                => 'nullable|numeric',
+                'lng'                => 'nullable|numeric',
+                'is_active'          => 'sometimes|boolean',
             ]);
 
             return $this->created(new BranchResource(Branch::create($data)));
@@ -73,13 +76,16 @@ class BranchController extends Controller
     {
         try {
             $branch->update($request->validate([
-                'name'      => 'sometimes|string|max:255',
-                'phone'     => 'nullable|string',
-                'contact_email' => 'nullable|email|max:255',
-                'address'   => 'nullable|string',
-                'timezone'  => 'nullable|string',
-                'working_hours' => 'nullable|string|max:4000',
-                'is_active' => 'sometimes|boolean',
+                'name'               => 'sometimes|string|max:255',
+                'phone'              => 'nullable|string',
+                'contact_email'      => 'nullable|email|max:255',
+                'address'            => 'nullable|string',
+                'timezone'           => 'nullable|string',
+                'working_hours'      => 'nullable|string|max:4000',
+                'gender_preference'  => 'nullable|in:ladies,gents,unisex',
+                'lat'                => 'nullable|numeric',
+                'lng'                => 'nullable|numeric',
+                'is_active'          => 'sometimes|boolean',
             ]));
 
             return $this->success(new BranchResource($branch), 'Branch updated');

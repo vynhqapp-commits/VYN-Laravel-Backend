@@ -27,8 +27,13 @@ class PublicSalonResource extends JsonResource
                 'alt_text' => $photo->alt_text,
                 'sort_order' => $photo->sort_order,
             ])->values(), []),
-            // Placeholder until FR-C013 review flow is implemented.
-            'reviews' => [],
+            'reviews' => $this->whenLoaded('approvedReviews', fn () => $this->approvedReviews->map(fn ($review) => [
+                'id' => $review->id,
+                'rating' => $review->rating,
+                'comment' => $review->comment,
+                'customer_name' => $review->customer?->full_name,
+                'created_at' => $review->created_at?->toISOString(),
+            ])->values(), []),
             'branch_count'   => $this->whenLoaded('branches', fn () => $this->branches->count()),
             'service_count'  => $this->whenLoaded('services', fn () => $this->services->count()),
             'branches'       => PublicBranchResource::collection($this->whenLoaded('branches')),

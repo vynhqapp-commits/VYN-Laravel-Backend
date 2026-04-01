@@ -270,6 +270,42 @@ class AuthController extends Controller
         }
     }
 
+    public function salonProfile()
+    {
+        try {
+            $user = auth('api')->user();
+            $tenant = \App\Models\Tenant::findOrFail($user->tenant_id);
+            return $this->success(new \App\Http\Resources\TenantResource($tenant));
+        } catch (\Throwable $e) {
+            return $this->error($e->getMessage());
+        }
+    }
+
+    public function updateSalonProfile(Request $request)
+    {
+        try {
+            $user = auth('api')->user();
+            $tenant = \App\Models\Tenant::findOrFail($user->tenant_id);
+
+            $data = $request->validate([
+                'name'     => 'sometimes|string|max:255',
+                'phone'    => 'nullable|string|max:30',
+                'address'  => 'nullable|string|max:500',
+                'timezone' => 'nullable|string|max:100',
+                'currency' => 'nullable|string|size:3',
+                'logo'     => 'nullable|string|max:500',
+            ]);
+
+            $tenant->update($data);
+
+            return $this->success(new \App\Http\Resources\TenantResource($tenant->fresh()), 'Salon profile updated');
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
+        } catch (\Throwable $e) {
+            return $this->error($e->getMessage());
+        }
+    }
+
     public function updateProfile(Request $request)
     {
         try {
