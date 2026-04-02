@@ -30,7 +30,21 @@ class InvoiceController extends Controller
         if ($withRelations) {
             $data['customer'] = $invoice->relationLoaded('customer') ? $invoice->customer : null;
             $data['branch']   = $invoice->relationLoaded('branch')   ? $invoice->branch   : null;
-            $data['items']    = $invoice->relationLoaded('items')     ? $invoice->items    : [];
+            $data['items']    = $invoice->relationLoaded('items')
+                ? $invoice->items->map(function ($item) {
+                    $itemable = $item->relationLoaded('itemable') ? $item->itemable : null;
+                    return [
+                        'id'          => (string) $item->id,
+                        'item_type'   => $item->itemable_type ? class_basename($item->itemable_type) : null,
+                        'name'        => $item->name,
+                        'description' => $itemable->description ?? null,
+                        'quantity'    => (int) $item->quantity,
+                        'unit_price'  => (float) $item->unit_price,
+                        'discount'    => (float) $item->discount,
+                        'total'       => (float) $item->total,
+                    ];
+                })->values()
+                : [];
             $data['payments'] = $invoice->relationLoaded('payments')  ? $invoice->payments : [];
         } else {
             $data['customer'] = $invoice->relationLoaded('customer') ? [
@@ -81,7 +95,7 @@ class InvoiceController extends Controller
 
     public function show(Invoice $invoice)
     {
-        $invoice->load('customer', 'branch', 'items', 'payments');
+        $invoice->load('customer', 'branch', 'items.itemable', 'payments');
 
         return response()->json([
             'data' => $this->invoiceResource($invoice, true),
