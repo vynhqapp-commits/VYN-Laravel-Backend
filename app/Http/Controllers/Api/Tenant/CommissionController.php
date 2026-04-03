@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Tenant;
 use App\Http\Controllers\Controller;
 use App\Models\CommissionEntry;
 use App\Models\CommissionRule;
+use App\Models\Staff;
 use App\Models\TipAllocation;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -97,6 +98,14 @@ class CommissionController extends Controller
 
     public function staffEarnings(Request $request, int $staffId): JsonResponse
     {
+        $user = auth('api')->user();
+        if ($user->hasRole('staff')) {
+            $ownStaff = Staff::where('user_id', $user->id)->first();
+            if (!$ownStaff || $ownStaff->id !== $staffId) {
+                return $this->error('Forbidden', 403);
+            }
+        }
+
         try {
             $data = $request->validate([
                 'from' => 'nullable|date_format:Y-m-d',

@@ -20,6 +20,7 @@ class UserSeeder extends Seeder
             $users = [
                 ['name' => "Owner {$tenant->name}", 'email' => "owner@$tenant->slug.com", 'role' => 'salon_owner'],
                 ['name' => "Manager {$tenant->name}", 'email' => "manager@$tenant->slug.com", 'role' => 'manager'],
+                ['name' => "Receptionist {$tenant->name}", 'email' => "receptionist@$tenant->slug.com", 'role' => 'receptionist'],
                 ['name' => "Staff {$tenant->name}", 'email' => "staff@$tenant->slug.com", 'role' => 'staff'],
                 ['name' => "Customer {$tenant->name}", 'email' => "customer@$tenant->slug.com", 'role' => 'customer'],
             ];

@@ -119,10 +119,10 @@ Route::middleware('auth:api')->group(function () {
     /*
     |----------------------------------------------------------------------
     | Tenant Routes (requires X-Tenant header)
-    | Accessible by: salon_owner, manager, staff, customer
+    | Accessible by: salon_owner, manager, receptionist, staff, customer
     |----------------------------------------------------------------------
     */
-    Route::middleware(['tenant', 'role:salon_owner,manager,staff,customer'])->group(function () {
+    Route::middleware(['tenant', 'role:salon_owner,manager,receptionist,staff,customer'])->group(function () {
 
         // Branches — salon_owner, manager
         Route::middleware('role:salon_owner,manager')->group(function () {
@@ -132,11 +132,17 @@ Route::middleware('auth:api')->group(function () {
             Route::patch('reviews/{review}/moderate', [\App\Http\Controllers\Api\Tenant\ReviewModerationController::class, 'moderate']);
         });
 
-        // Services & Categories — salon_owner, manager
+        // Services & Categories — read: all salon roles; write: salon_owner, manager
+        Route::middleware('role:salon_owner,manager,receptionist,staff')->group(function () {
+            Route::get('service-categories', [\App\Http\Controllers\Api\Tenant\ServiceCategoryController::class, 'index']);
+            Route::get('services', [\App\Http\Controllers\Api\Tenant\ServiceController::class, 'index']);
+            Route::get('services/{service}', [\App\Http\Controllers\Api\Tenant\ServiceController::class, 'show']);
+        });
         Route::middleware('role:salon_owner,manager')->group(function () {
             Route::apiResource('service-categories', \App\Http\Controllers\Api\Tenant\ServiceCategoryController::class)
-                ->except(['show']);
-            Route::apiResource('services', \App\Http\Controllers\Api\Tenant\ServiceController::class);
+                ->except(['show', 'index']);
+            Route::apiResource('services', \App\Http\Controllers\Api\Tenant\ServiceController::class)
+                ->except(['index', 'show']);
 
             // Per-branch service availability (weekly + overrides)
             Route::get('services/{service}/availabilities', [\App\Http\Controllers\Api\Tenant\ServiceAvailabilityController::class, 'index']);
@@ -150,8 +156,8 @@ Route::middleware('auth:api')->group(function () {
             Route::delete('services/{service}/availability-overrides/{override}', [\App\Http\Controllers\Api\Tenant\ServiceAvailabilityOverrideController::class, 'destroy']);
         });
 
-        // Products — salon_owner, manager (manage) + staff (view)
-        Route::middleware('role:salon_owner,manager,staff')->group(function () {
+        // Products — salon_owner, manager (manage) + receptionist, staff (view)
+        Route::middleware('role:salon_owner,manager,receptionist,staff')->group(function () {
             Route::get('products', [\App\Http\Controllers\Api\Tenant\ProductController::class, 'index']);
             Route::get('products/{product}', [\App\Http\Controllers\Api\Tenant\ProductController::class, 'show']);
         });
@@ -161,8 +167,8 @@ Route::middleware('auth:api')->group(function () {
             Route::delete('products/{product}', [\App\Http\Controllers\Api\Tenant\ProductController::class, 'destroy']);
         });
 
-        // Inventory — salon_owner, manager, staff
-        Route::middleware('role:salon_owner,manager,staff')->group(function () {
+        // Inventory — salon_owner, manager
+        Route::middleware('role:salon_owner,manager')->group(function () {
             Route::get('inventory/{branch}', [\App\Http\Controllers\Api\Tenant\InventoryController::class, 'byBranch']);
             Route::post('inventory/stock', [\App\Http\Controllers\Api\Tenant\InventoryController::class, 'adjust']);
         });
@@ -174,8 +180,8 @@ Route::middleware('auth:api')->group(function () {
             Route::post('staff/{staff}/schedules', [\App\Http\Controllers\Api\Tenant\ScheduleController::class, 'store']);
         });
 
-        // Customers — salon_owner, manager, staff
-        Route::middleware('role:salon_owner,manager,staff')->group(function () {
+        // Customers — salon_owner, manager, receptionist
+        Route::middleware('role:salon_owner,manager,receptionist')->group(function () {
             Route::apiResource('customers', \App\Http\Controllers\Api\Tenant\CustomerController::class)
                 ->except(['destroy']);
             Route::get('customers/{customer}/notes',  [\App\Http\Controllers\Api\Tenant\CustomerController::class, 'notes']);
@@ -190,12 +196,12 @@ Route::middleware('auth:api')->group(function () {
             Route::post('customers/{customer}/memberships/{membership}/renew', [\App\Http\Controllers\Api\Tenant\CustomerCrmController::class, 'renewMembership']);
         });
 
-        // Appointments — salon_owner, manager, staff
-        Route::middleware('role:salon_owner,manager,staff')->group(function () {
+        // Appointments — salon_owner, manager, receptionist, staff (staff: own calendar only)
+        Route::middleware('role:salon_owner,manager,receptionist,staff')->group(function () {
             Route::apiResource('appointments', \App\Http\Controllers\Api\Tenant\AppointmentController::class);
         });
-        // POS / Sales — salon_owner, manager, staff
-        Route::middleware('role:salon_owner,manager,staff')->group(function () {
+        // POS / Sales — salon_owner, manager, receptionist
+        Route::middleware('role:salon_owner,manager,receptionist')->group(function () {
             Route::get('sales', [\App\Http\Controllers\Api\Tenant\SaleController::class, 'index']);
             Route::post('sales', [\App\Http\Controllers\Api\Tenant\SaleController::class, 'store']);
             Route::get('sales/{sale}', [\App\Http\Controllers\Api\Tenant\SaleController::class, 'show']);
@@ -203,8 +209,8 @@ Route::middleware('auth:api')->group(function () {
             Route::post('sales/{sale}/refund', [\App\Http\Controllers\Api\Tenant\SaleController::class, 'refund']);
         });
 
-        // Cash drawer — salon_owner, manager, staff(view) but only owner/manager can mutate
-        Route::middleware('role:salon_owner,manager,staff')->group(function () {
+        // Cash drawer — salon_owner, manager, receptionist (view) but only owner/manager can mutate
+        Route::middleware('role:salon_owner,manager,receptionist')->group(function () {
             Route::get('cash-drawers', [\App\Http\Controllers\Api\Tenant\CashDrawerController::class, 'index']);
         });
         Route::middleware('role:salon_owner,manager')->group(function () {
@@ -214,16 +220,16 @@ Route::middleware('auth:api')->group(function () {
             Route::post('cash-drawers/{session}/approve', [\App\Http\Controllers\Api\Tenant\CashDrawerController::class, 'approve']);
         });
 
-        // Expenses — salon_owner, manager, staff
-        Route::middleware('role:salon_owner,manager,staff')->group(function () {
+        // Expenses — salon_owner, manager
+        Route::middleware('role:salon_owner,manager')->group(function () {
             Route::get('expenses', [\App\Http\Controllers\Api\Tenant\ExpenseController::class, 'index']);
             Route::post('expenses', [\App\Http\Controllers\Api\Tenant\ExpenseController::class, 'store']);
             Route::patch('expenses/{expense}', [\App\Http\Controllers\Api\Tenant\ExpenseController::class, 'update']);
             Route::delete('expenses/{expense}', [\App\Http\Controllers\Api\Tenant\ExpenseController::class, 'destroy']);
         });
 
-        // Debts — salon_owner, manager, staff
-        Route::middleware('role:salon_owner,manager,staff')->group(function () {
+        // Debts — salon_owner, manager
+        Route::middleware('role:salon_owner,manager')->group(function () {
             Route::get('debts', [\App\Http\Controllers\Api\Tenant\DebtController::class, 'index']);
             Route::get('debts/aging-report', [\App\Http\Controllers\Api\Tenant\DebtController::class, 'agingReport']);
             Route::get('debts/write-off-requests', [\App\Http\Controllers\Api\Tenant\DebtController::class, 'writeOffRequests']);
@@ -235,8 +241,8 @@ Route::middleware('auth:api')->group(function () {
             Route::post('debts/write-off-requests/{requestItem}/reject', [\App\Http\Controllers\Api\Tenant\DebtController::class, 'rejectWriteOff']);
         });
 
-        // Reports — salon_owner, manager, staff
-        Route::middleware('role:salon_owner,manager,staff')->group(function () {
+        // Reports — salon_owner, manager
+        Route::middleware('role:salon_owner,manager')->group(function () {
             Route::get('reports/profit-loss', [\App\Http\Controllers\Api\Tenant\ReportController::class, 'profitLoss']);
             Route::get('reports/profit-loss/export', [\App\Http\Controllers\Api\Tenant\ReportController::class, 'profitLossExport']);
             Route::get('reports/vat', [\App\Http\Controllers\Api\Tenant\ReportController::class, 'vat']);
@@ -259,14 +265,17 @@ Route::middleware('auth:api')->group(function () {
             Route::get('analytics/franchise', [\App\Http\Controllers\Api\Tenant\FranchiseAnalyticsController::class, 'kpis']);
         });
 
-        // Commissions — salon_owner, manager, staff
-        Route::middleware('role:salon_owner,manager,staff')->group(function () {
+        // Commissions — rule management: salon_owner, manager
+        Route::middleware('role:salon_owner,manager')->group(function () {
             Route::get('commissions', [\App\Http\Controllers\Api\Tenant\CommissionController::class, 'index']);
             Route::post('commissions/rules', [\App\Http\Controllers\Api\Tenant\CommissionController::class, 'store']);
             Route::put('commissions/rules/{commission}', [\App\Http\Controllers\Api\Tenant\CommissionController::class, 'update']);
             Route::delete('commissions/rules/{commission}', [\App\Http\Controllers\Api\Tenant\CommissionController::class, 'destroy']);
-            Route::get('commissions/staff/{staff}/earnings', [\App\Http\Controllers\Api\Tenant\CommissionController::class, 'staffEarnings']);
             Route::get('commissions/{commission}', [\App\Http\Controllers\Api\Tenant\CommissionController::class, 'show']);
+        });
+        // Staff earnings — salon_owner, manager (any staff), staff (own only, enforced in controller)
+        Route::middleware('role:salon_owner,manager,staff')->group(function () {
+            Route::get('commissions/staff/{staff}/earnings', [\App\Http\Controllers\Api\Tenant\CommissionController::class, 'staffEarnings']);
         });
 
         // Gift Cards
