@@ -278,13 +278,18 @@ Route::middleware('auth:api')->group(function () {
             Route::get('commissions/staff/{staff}/earnings', [\App\Http\Controllers\Api\Tenant\CommissionController::class, 'staffEarnings']);
         });
 
-        // Gift Cards
-        Route::post('gift-cards/verify', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'verify']);
-        Route::get('gift-cards', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'index']);
-        Route::post('gift-cards', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'store']);
-        Route::get('gift-cards/{card}', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'show']);
-        Route::post('gift-cards/{card}/redeem', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'redeem']);
-        Route::post('gift-cards/{card}/void', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'void']);
+        // Gift cards — list/issue/detail/void: salon_owner, manager
+        Route::middleware('role:salon_owner,manager')->group(function () {
+            Route::get('gift-cards', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'index']);
+            Route::post('gift-cards', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'store']);
+            Route::get('gift-cards/{card}', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'show']);
+            Route::post('gift-cards/{card}/void', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'void']);
+        });
+        // Gift cards — verify/redeem: + receptionist
+        Route::middleware('role:salon_owner,manager,receptionist')->group(function () {
+            Route::post('gift-cards/verify', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'verify']);
+            Route::post('gift-cards/{card}/redeem', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'redeem']);
+        });
 
         // Invoices
         Route::get('invoices', [\App\Http\Controllers\Api\Tenant\InvoiceController::class, 'index']);
