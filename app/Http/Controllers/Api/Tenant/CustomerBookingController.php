@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Api\Tenant;
 
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
+use App\Models\AppointmentService;
 use App\Models\Customer;
 use App\Models\Staff;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class CustomerBookingController extends Controller
 {
@@ -195,6 +197,108 @@ class CustomerBookingController extends Controller
             $payload,
             'Booking rescheduled'
         );
+    }
+
+    /**
+     * Create a new booking using services/staff/branch from a prior appointment (e.g. completed visit).
+     */
+    public function rebook(Request $request, Appointment $appointment): JsonResponse
+    {
+        $owned = $this->ownedByCustomer($appointment);
+        if ($owned !== true) {
+            return $owned;
+        }
+
+        try {
+            $data = $request->validate([
+                'start_at' => 'required|date|after:now',
+                'staff_id' => 'nullable|exists:staff,id',
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->validationError($e->errors());
+        }
+
+        $appointment->load(['services' => fn ($q) => $q->withoutGlobalScopes()]);
+        if ($appointment->services->isEmpty()) {
+            return $this->error('This booking has no services attached; use the booking flow to pick a service.', 422);
+        }
+
+        $durationMinutes = (int) $appointment->services->sum('duration_minutes');
+        if ($durationMinutes <= 0) {
+            $durationMinutes = max(1, Carbon::parse($appointment->starts_at)->diffInMinutes(Carbon::parse($appointment->ends_at)));
+        }
+
+        $newStartAt = Carbon::parse($data['start_at']);
+        $newEndAt = $newStartAt->copy()->addMinutes($durationMinutes);
+
+        $staffId = $data['staff_id'] ?? $appointment->staff_id;
+        if (! $staffId) {
+            return $this->error('A staff member is required to rebook.', 422);
+        }
+
+        if (! empty($data['staff_id'])) {
+            $staffOk = Staff::withoutGlobalScopes()
+                ->whereKey($staffId)
+                ->where('tenant_id', $appointment->tenant_id)
+                ->where('branch_id', $appointment->branch_id)
+                ->where('is_active', true)
+                ->exists();
+            if (! $staffOk) {
+                return $this->error('Selected staff is not available for this branch.', 422);
+            }
+        }
+
+        $conflictExists = Appointment::withoutGlobalScopes()
+            ->where('tenant_id', $appointment->tenant_id)
+            ->where('branch_id', $appointment->branch_id)
+            ->where('staff_id', $staffId)
+            ->whereIn('status', ['scheduled', 'confirmed', 'pending'])
+            ->where('starts_at', '<', $newEndAt)
+            ->where('ends_at', '>', $newStartAt)
+            ->exists();
+
+        if ($conflictExists) {
+            return $this->error('Selected slot is no longer available.', 422);
+        }
+
+        try {
+            $created = DB::transaction(function () use ($appointment, $staffId, $newStartAt, $newEndAt) {
+                $row = Appointment::withoutGlobalScopes()->create([
+                    'tenant_id' => $appointment->tenant_id,
+                    'branch_id' => $appointment->branch_id,
+                    'customer_id' => $appointment->customer_id,
+                    'staff_id' => $staffId,
+                    'starts_at' => $newStartAt,
+                    'ends_at' => $newEndAt,
+                    'status' => 'scheduled',
+                    'source' => 'rebook',
+                    'notes' => 'Rebooked from appointment #'.$appointment->id,
+                ]);
+
+                foreach ($appointment->services as $line) {
+                    AppointmentService::create([
+                        'appointment_id' => $row->id,
+                        'service_id' => $line->service_id,
+                        'price' => $line->price,
+                        'duration_minutes' => $line->duration_minutes,
+                    ]);
+                }
+
+                return $row;
+            });
+        } catch (\Throwable) {
+            return $this->error('Could not create booking.');
+        }
+
+        $created->load([
+            'branch' => fn ($q) => $q->withoutGlobalScopes(),
+            'staff' => fn ($q) => $q->withoutGlobalScopes(),
+            'services' => fn ($q) => $q->withoutGlobalScopes()
+                ->with(['service' => fn ($sq) => $sq->withoutGlobalScopes()]),
+            'review',
+        ]);
+
+        return $this->success(['booking' => $created], 'Booking created');
     }
 
     private function ownedByCustomer(Appointment $appointment): true|JsonResponse

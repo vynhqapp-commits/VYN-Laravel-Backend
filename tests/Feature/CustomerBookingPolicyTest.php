@@ -3,8 +3,10 @@
 namespace Tests\Feature;
 
 use App\Models\Appointment;
+use App\Models\AppointmentService;
 use App\Models\Branch;
 use App\Models\Customer;
+use App\Models\Service;
 use App\Models\Staff;
 use App\Models\Tenant;
 use App\Models\User;
@@ -90,6 +92,35 @@ class CustomerBookingPolicyTest extends TestCase
             ->assertStatus(422);
     }
 
+    public function test_my_bookings_index_includes_tenant_id_for_favorites_and_rebook(): void
+    {
+        [$token, $appt] = $this->makeCustomerAppointment(now()->addHours(10));
+
+        $this->withToken($token)
+            ->getJson('/api/customer/bookings')
+            ->assertStatus(200)
+            ->assertJsonPath('data.bookings.0.tenant_id', $appt->tenant_id);
+    }
+
+    public function test_rebook_creates_new_scheduled_appointment(): void
+    {
+        [$token, $appt] = $this->makeCustomerAppointmentWithService(now()->subDay());
+        $appt->update(['status' => 'completed']);
+
+        $start = now()->addDays(3)->startOfHour();
+
+        $before = Appointment::withoutGlobalScopes()->where('customer_id', $appt->customer_id)->count();
+
+        $this->withToken($token)
+            ->postJson("/api/customer/bookings/{$appt->id}/rebook", [
+                'start_at' => $start->toISOString(),
+            ])
+            ->assertStatus(200)
+            ->assertJsonPath('data.booking.status', 'scheduled');
+
+        $this->assertSame($before + 1, Appointment::withoutGlobalScopes()->where('customer_id', $appt->customer_id)->count());
+    }
+
     private function makeCustomerAppointment(Carbon $startsAt): array
     {
         $tenant = Tenant::create(['name' => 'Policy Salon ' . uniqid()]);
@@ -130,6 +161,34 @@ class CustomerBookingPolicyTest extends TestCase
             'starts_at' => $startsAt,
             'ends_at' => $startsAt->copy()->addMinutes(30),
             'status' => 'scheduled',
+        ]);
+
+        return [$token, $appointment];
+    }
+
+    /** @return array{0: string, 1: Appointment} */
+    private function makeCustomerAppointmentWithService(Carbon $startsAt): array
+    {
+        [$token, $appointment] = $this->makeCustomerAppointment($startsAt);
+
+        $service = Service::withoutGlobalScopes()->create([
+            'tenant_id' => $appointment->tenant_id,
+            'service_category_id' => null,
+            'name' => 'Cut',
+            'duration_minutes' => 30,
+            'price' => 40,
+            'is_active' => true,
+        ]);
+
+        AppointmentService::create([
+            'appointment_id' => $appointment->id,
+            'service_id' => $service->id,
+            'price' => $service->price,
+            'duration_minutes' => $service->duration_minutes,
+        ]);
+
+        $appointment->update([
+            'ends_at' => $startsAt->copy()->addMinutes($service->duration_minutes),
         ]);
 
         return [$token, $appointment];

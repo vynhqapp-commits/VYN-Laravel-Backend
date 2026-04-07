@@ -68,6 +68,7 @@ Route::middleware('auth:api')->group(function () {
         Route::get('bookings',                        [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'index']);
         Route::get('bookings/{appointment}',          [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'show']);
         Route::patch('bookings/{appointment}/reschedule', [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'reschedule']);
+        Route::post('bookings/{appointment}/rebook', [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'rebook']);
         Route::patch('bookings/{appointment}/cancel', [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'cancel']);
         Route::post('bookings/{appointment}/review',  [\App\Http\Controllers\Api\Tenant\CustomerReviewController::class, 'store']);
         Route::get('reviews', [\App\Http\Controllers\Api\Tenant\CustomerReviewController::class, 'index']);
@@ -278,17 +279,17 @@ Route::middleware('auth:api')->group(function () {
             Route::get('commissions/staff/{staff}/earnings', [\App\Http\Controllers\Api\Tenant\CommissionController::class, 'staffEarnings']);
         });
 
+        // Gift cards — register POST verify before gift-cards/{card} (literal segment first)
+        Route::middleware('role:salon_owner,manager,receptionist')->group(function () {
+            Route::post('gift-cards/verify', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'verify']);
+            Route::post('gift-cards/{card}/redeem', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'redeem']);
+        });
         // Gift cards — list/issue/detail/void: salon_owner, manager
         Route::middleware('role:salon_owner,manager')->group(function () {
             Route::get('gift-cards', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'index']);
             Route::post('gift-cards', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'store']);
             Route::get('gift-cards/{card}', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'show']);
             Route::post('gift-cards/{card}/void', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'void']);
-        });
-        // Gift cards — verify/redeem: + receptionist
-        Route::middleware('role:salon_owner,manager,receptionist')->group(function () {
-            Route::post('gift-cards/verify', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'verify']);
-            Route::post('gift-cards/{card}/redeem', [\App\Http\Controllers\Api\Tenant\GiftCardController::class, 'redeem']);
         });
 
         // Invoices
