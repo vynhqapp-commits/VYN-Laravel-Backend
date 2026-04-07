@@ -10,6 +10,7 @@ use App\Models\InvoiceItem;
 use App\Models\LedgerEntry;
 use App\Models\Payment;
 use App\Models\Product;
+use App\Models\Coupon;
 use App\Models\Service;
 use App\Models\Staff;
 use App\Models\Tenant;
@@ -219,10 +220,40 @@ class SaleController extends Controller
             $discountType = $data['discount_type'] ?? null;
             $discountValue = isset($data['discount_value']) ? (float) $data['discount_value'] : 0.0;
             $discountAmount = 0.0;
-            if ($discountType === 'percent') {
-                $discountAmount = max(0.0, min($subtotal, ($subtotal * $discountValue) / 100.0));
-            } elseif ($discountType === 'flat') {
-                $discountAmount = max(0.0, min($subtotal, $discountValue));
+            $couponId = null;
+            $discountCode = !empty($data['discount_code']) ? strtoupper(trim((string) $data['discount_code'])) : null;
+
+            if ($discountCode) {
+                /** @var Coupon|null $coupon */
+                $coupon = Coupon::query()
+                    ->where('code', $discountCode)
+                    ->where('is_active', true)
+                    ->first();
+
+                $now = now();
+                $invalid = false;
+                if (!$coupon) $invalid = true;
+                if ($coupon && $coupon->starts_at && $now->lt($coupon->starts_at)) $invalid = true;
+                if ($coupon && $coupon->ends_at && $now->gt($coupon->ends_at)) $invalid = true;
+                if ($coupon && $coupon->usage_limit !== null && (int) $coupon->used_count >= (int) $coupon->usage_limit) $invalid = true;
+                if ($coupon && $coupon->min_subtotal !== null && (float) $subtotal + 0.0001 < (float) $coupon->min_subtotal) $invalid = true;
+
+                if ($invalid) {
+                    return $this->validationError(['discount_code' => ['Invalid or expired coupon code.']]);
+                }
+
+                $couponId = $coupon->id;
+                if ($coupon->type === 'percent') {
+                    $discountAmount = max(0.0, min($subtotal, ($subtotal * (float) $coupon->value) / 100.0));
+                } else {
+                    $discountAmount = max(0.0, min($subtotal, (float) $coupon->value));
+                }
+            } else {
+                if ($discountType === 'percent') {
+                    $discountAmount = max(0.0, min($subtotal, ($subtotal * $discountValue) / 100.0));
+                } elseif ($discountType === 'flat') {
+                    $discountAmount = max(0.0, min($subtotal, $discountValue));
+                }
             }
             $invoiceTotal = max(0.0, $subtotal - $discountAmount + $tipsAmount + $giftCardAmount);
 
@@ -231,6 +262,8 @@ class SaleController extends Controller
                 'branch_id'      => $data['branch_id'],
                 'customer_id'    => $data['customer_id'] ?? null,
                 'appointment_id' => $data['appointment_id'] ?? null,
+                'coupon_id'      => $couponId,
+                'discount_code'  => $discountCode,
                 'invoice_number' => 'INV-' . now()->format('Ymd') . '-' . uniqid(),
                 'subtotal'       => $subtotal,
                 'discount'       => $discountAmount,
@@ -238,7 +271,7 @@ class SaleController extends Controller
                 'total'          => $invoiceTotal,
                 'paid_amount'    => 0,
                 'status'         => 'draft',
-                'notes'          => trim((string) (($data['notes'] ?? '') . (!empty($data['discount_code']) ? (' | promo:' . $data['discount_code']) : ''))) ?: null,
+                'notes'          => trim((string) ($data['notes'] ?? '')) ?: null,
             ]);
 
             foreach ($data['items'] as $it) {
@@ -334,6 +367,11 @@ class SaleController extends Controller
                 'paid_amount' => $paid,
                 'status' => $status,
             ]);
+
+            // Coupon usage tracking (counts on successful sale creation)
+            if (!empty($couponId)) {
+                Coupon::query()->where('id', $couponId)->increment('used_count');
+            }
 
             // Revenue classification (services vs products vs tips vs gift cards) into ledger
             $invoiceItems = InvoiceItem::where('invoice_id', $invoice->id)->get(['itemable_type', 'total', 'quantity']);

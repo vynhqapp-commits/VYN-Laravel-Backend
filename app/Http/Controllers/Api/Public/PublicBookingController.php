@@ -18,6 +18,7 @@ use App\Models\ServiceBranchAvailabilityOverride;
 use App\Models\Service;
 use App\Models\StaffSchedule;
 use App\Models\Staff;
+use App\Models\TimeBlock;
 use App\Models\Tenant;
 use App\Services\Notifications\BookingNotificationService;
 use Carbon\Carbon;
@@ -273,6 +274,12 @@ class PublicBookingController extends Controller
             ->whereIn('status', ['scheduled', 'confirmed'])
             ->get(['staff_id', 'starts_at', 'ends_at']);
 
+        $blocks = TimeBlock::withoutGlobalScopes()
+            ->where('tenant_id', $service->tenant_id)
+            ->where('branch_id', $data['branch_id'])
+            ->whereDate('starts_at', $date->toDateString())
+            ->get(['staff_id', 'starts_at', 'ends_at']);
+
         $freeSlots = collect();
 
         foreach ($staffSchedules as $staffId => $sched) {
@@ -296,6 +303,7 @@ class PublicBookingController extends Controller
 
                 $stepMinutes = (int) ($window['slot_minutes'] ?? 30);
                 $staffBooked = $booked->where('staff_id', $staffId);
+                $staffBlocks = $blocks->filter(fn ($b) => $b->staff_id === null || (int) $b->staff_id === (int) $staffId);
                 $cursor = $start->copy();
 
                 // Only generate slots that finish before or at the effective end (duration buffer)
@@ -307,7 +315,13 @@ class PublicBookingController extends Controller
                         return $cursor->lt($aEnd) && $slotEnd->gt($aStart);
                     });
 
-                    if (!$conflict) {
+                    $blocked = $staffBlocks->first(function ($blk) use ($cursor, $slotEnd) {
+                        $bStart = Carbon::parse($blk->starts_at);
+                        $bEnd = Carbon::parse($blk->ends_at);
+                        return $cursor->lt($bEnd) && $slotEnd->gt($bStart);
+                    });
+
+                    if (!$conflict && !$blocked) {
                         $key = $cursor->format('Y-m-d\TH:i:s');
                         if (!$freeSlots->has($key)) {
                             $freeSlots->put($key, [
@@ -407,6 +421,22 @@ class PublicBookingController extends Controller
             if ($conflictExists) {
                 DB::rollBack();
                 return $this->error('Selected slot is no longer available.', 422);
+            }
+
+            $blocked = TimeBlock::withoutGlobalScopes()
+                ->lockForUpdate()
+                ->where('tenant_id', $tenantId)
+                ->where('branch_id', $data['branch_id'])
+                ->where(function ($q) use ($staffId) {
+                    $q->whereNull('staff_id')->orWhere('staff_id', $staffId);
+                })
+                ->where('starts_at', '<', $endAt)
+                ->where('ends_at', '>', $startAt)
+                ->exists();
+
+            if ($blocked) {
+                DB::rollBack();
+                return $this->error('Selected slot is blocked.', 422);
             }
 
             $customer = Customer::withoutGlobalScopes()

@@ -11,6 +11,7 @@ use App\Models\Service;
 use App\Models\ServiceProductUsage;
 use App\Models\Staff;
 use App\Models\StockMovement;
+use App\Models\TimeBlock;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -116,13 +117,35 @@ class AppointmentController extends Controller
             $staffId = $data['staff_id'] ?? Staff::where('branch_id', $data['branch_id'])->value('id');
             if (!$staffId) return $this->error('No staff available', 422);
 
+            $startsAt = Carbon::parse($data['start_time']);
+            $endsAt = Carbon::parse($data['end_time']);
+
+            $conflict = Appointment::query()
+                ->where('branch_id', $data['branch_id'])
+                ->where('staff_id', $staffId)
+                ->whereIn('status', ['pending', 'scheduled', 'confirmed', 'checked_in', 'in_progress'])
+                ->where('starts_at', '<', $endsAt)
+                ->where('ends_at', '>', $startsAt)
+                ->exists();
+            if ($conflict) return $this->error('Staff is already booked for this time.', 422);
+
+            $blocked = TimeBlock::query()
+                ->where('branch_id', $data['branch_id'])
+                ->where(function ($q) use ($staffId) {
+                    $q->whereNull('staff_id')->orWhere('staff_id', $staffId);
+                })
+                ->where('starts_at', '<', $endsAt)
+                ->where('ends_at', '>', $startsAt)
+                ->exists();
+            if ($blocked) return $this->error('Selected time is blocked.', 422);
+
             $appointment = Appointment::create([
                 'tenant_id'   => auth('api')->user()?->tenant_id,
                 'branch_id'   => $data['branch_id'],
                 'customer_id' => $data['customer_id'],
                 'staff_id'    => $staffId,
-                'starts_at'   => Carbon::parse($data['start_time']),
-                'ends_at'     => Carbon::parse($data['end_time']),
+                'starts_at'   => $startsAt,
+                'ends_at'     => $endsAt,
                 'status'      => $data['status'] ?? 'scheduled',
                 'source'      => $data['source'] ?? 'dashboard',
                 'notes'       => $data['notes'] ?? null,
@@ -185,8 +208,31 @@ class AppointmentController extends Controller
             $updateData = $data;
             if ($isReschedule) {
                 // Map frontend payload into model fields.
-                $updateData['starts_at'] = Carbon::parse((string) $data['start_time']);
-                $updateData['ends_at'] = Carbon::parse((string) $data['end_time']);
+                $nextStarts = Carbon::parse((string) $data['start_time']);
+                $nextEnds = Carbon::parse((string) $data['end_time']);
+
+                $conflict = Appointment::query()
+                    ->where('branch_id', $appointment->branch_id)
+                    ->where('staff_id', $appointment->staff_id)
+                    ->whereIn('status', ['pending', 'scheduled', 'confirmed', 'checked_in', 'in_progress'])
+                    ->where('id', '!=', $appointment->id)
+                    ->where('starts_at', '<', $nextEnds)
+                    ->where('ends_at', '>', $nextStarts)
+                    ->exists();
+                if ($conflict) return $this->error('Staff is already booked for this time.', 422);
+
+                $blocked = TimeBlock::query()
+                    ->where('branch_id', $appointment->branch_id)
+                    ->where(function ($q) use ($appointment) {
+                        $q->whereNull('staff_id')->orWhere('staff_id', $appointment->staff_id);
+                    })
+                    ->where('starts_at', '<', $nextEnds)
+                    ->where('ends_at', '>', $nextStarts)
+                    ->exists();
+                if ($blocked) return $this->error('Selected time is blocked.', 422);
+
+                $updateData['starts_at'] = $nextStarts;
+                $updateData['ends_at'] = $nextEnds;
                 unset($updateData['start_time'], $updateData['end_time']);
             }
 

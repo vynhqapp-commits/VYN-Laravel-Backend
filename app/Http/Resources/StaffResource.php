@@ -14,6 +14,7 @@ class StaffResource extends JsonResource
             'name'           => $this->name,
             'phone'          => $this->phone,
             'specialization' => $this->specialization,
+            'color'          => $this->color,
             'is_active'      => $this->is_active,
             'branch'         => new BranchResource($this->whenLoaded('branch')),
             'schedules'      => StaffScheduleResource::collection($this->whenLoaded('schedules')),

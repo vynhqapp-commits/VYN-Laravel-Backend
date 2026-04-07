@@ -201,6 +201,13 @@ Route::middleware('auth:api')->group(function () {
         Route::middleware('role:salon_owner,manager,receptionist,staff')->group(function () {
             Route::apiResource('appointments', \App\Http\Controllers\Api\Tenant\AppointmentController::class);
         });
+        // Time blocks — salon_owner, manager, receptionist (block calendar / staff time)
+        Route::middleware('role:salon_owner,manager,receptionist')->group(function () {
+            Route::get('time-blocks', [\App\Http\Controllers\Api\Tenant\TimeBlockController::class, 'index']);
+            Route::post('time-blocks', [\App\Http\Controllers\Api\Tenant\TimeBlockController::class, 'store']);
+            Route::patch('time-blocks/{timeBlock}', [\App\Http\Controllers\Api\Tenant\TimeBlockController::class, 'update']);
+            Route::delete('time-blocks/{timeBlock}', [\App\Http\Controllers\Api\Tenant\TimeBlockController::class, 'destroy']);
+        });
         // POS / Sales — salon_owner, manager, receptionist
         Route::middleware('role:salon_owner,manager,receptionist')->group(function () {
             Route::get('sales', [\App\Http\Controllers\Api\Tenant\SaleController::class, 'index']);
@@ -208,6 +215,15 @@ Route::middleware('auth:api')->group(function () {
             Route::get('sales/{sale}', [\App\Http\Controllers\Api\Tenant\SaleController::class, 'show']);
             Route::post('sales/{sale}/receipt/notify', [\App\Http\Controllers\Api\Tenant\SaleController::class, 'notifyReceipt']);
             Route::post('sales/{sale}/refund', [\App\Http\Controllers\Api\Tenant\SaleController::class, 'refund']);
+        });
+
+        // Coupons — salon_owner, manager
+        Route::middleware('role:salon_owner,manager')->group(function () {
+            Route::get('coupons', [\App\Http\Controllers\Api\Tenant\CouponController::class, 'index']);
+            Route::post('coupons', [\App\Http\Controllers\Api\Tenant\CouponController::class, 'store']);
+            Route::get('coupons/{coupon}', [\App\Http\Controllers\Api\Tenant\CouponController::class, 'show']);
+            Route::patch('coupons/{coupon}', [\App\Http\Controllers\Api\Tenant\CouponController::class, 'update']);
+            Route::delete('coupons/{coupon}', [\App\Http\Controllers\Api\Tenant\CouponController::class, 'destroy']);
         });
 
         // Cash drawer — salon_owner, manager, receptionist (view) but only owner/manager can mutate

@@ -29,6 +29,7 @@ class StaffController extends Controller
                 'name'           => 'required|string|max:255',
                 'phone'          => 'nullable|string',
                 'specialization' => 'nullable|string',
+                'color'          => ['nullable', 'string', 'max:16', 'regex:/^#?[0-9a-fA-F]{6}$/'],
             ]);
 
             $staff = Staff::create($data);
@@ -60,6 +61,7 @@ class StaffController extends Controller
                 'name'           => 'sometimes|string|max:255',
                 'phone'          => 'nullable|string',
                 'specialization' => 'nullable|string',
+                'color'          => ['nullable', 'string', 'max:16', 'regex:/^#?[0-9a-fA-F]{6}$/'],
                 'is_active'      => 'sometimes|boolean',
             ]));
 
