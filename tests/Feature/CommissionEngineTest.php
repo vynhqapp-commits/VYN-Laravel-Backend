@@ -82,6 +82,14 @@ class CommissionEngineTest extends TestCase
 
         $this->withToken($token)
             ->withHeader('X-Tenant', (string) $tenant->id)
+            ->postJson('/api/cash-drawers/open', [
+                'branch_id' => $branch->id,
+                'opening_balance' => 0,
+            ])
+            ->assertCreated();
+
+        $this->withToken($token)
+            ->withHeader('X-Tenant', (string) $tenant->id)
             ->postJson('/api/sales', [
                 'branch_id' => $branch->id,
                 'customer_id' => $customer->id,

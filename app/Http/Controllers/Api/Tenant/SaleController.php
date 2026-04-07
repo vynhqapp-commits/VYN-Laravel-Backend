@@ -15,6 +15,7 @@ use App\Models\Service;
 use App\Models\Staff;
 use App\Models\Tenant;
 use App\Models\CashDrawer;
+use App\Models\CashMovement;
 use App\Models\CommissionEntry;
 use App\Models\CommissionRule;
 use App\Models\TipAllocation;
@@ -334,6 +335,9 @@ class SaleController extends Controller
                 if ($method === 'cash') {
                     $drawer = CashDrawer::query()->where('branch_id', $data['branch_id'])->first();
                     $openSession = $drawer?->sessions()->where('status', 'open')->first();
+                    if (!$openSession) {
+                        throw new \RuntimeException('Cash drawer session must be open before accepting cash payments');
+                    }
                     $cashDrawerSessionId = $openSession?->id;
                 }
 
@@ -346,6 +350,17 @@ class SaleController extends Controller
                     'status' => 'completed',
                     'cash_drawer_session_id' => $cashDrawerSessionId,
                 ]);
+
+                if ($method === 'cash' && $cashDrawerSessionId !== null) {
+                    CashMovement::create([
+                        'tenant_id' => $tenantId,
+                        'cash_drawer_session_id' => $cashDrawerSessionId,
+                        'type' => 'cash_in',
+                        'amount' => $amt,
+                        'reason' => 'Checkout — ' . $invoice->invoice_number,
+                        'created_by' => auth('api')->id(),
+                    ]);
+                }
             }
 
             if (count($paymentRows) > 1) {

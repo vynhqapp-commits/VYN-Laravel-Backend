@@ -108,6 +108,14 @@ class ProductsAndSalesTest extends TestCase
             'is_active' => true,
         ]);
 
+        $this->withToken($token)
+            ->withHeader('X-Tenant', (string) $tenant->id)
+            ->postJson('/api/cash-drawers/open', [
+                'branch_id' => $branch->id,
+                'opening_balance' => 0,
+            ])
+            ->assertCreated();
+
         $res = $this->withToken($token)
             ->withHeader('X-Tenant', (string) $tenant->id)
             ->postJson('/api/sales', [

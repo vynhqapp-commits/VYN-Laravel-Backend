@@ -10,7 +10,6 @@ use App\Models\CashDrawer;
 use App\Models\CashDrawerSession;
 use App\Models\CashMovement;
 use App\Models\LedgerEntry;
-use App\Models\Payment;
 use App\Services\AuditLogger;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -34,7 +33,8 @@ class CashDrawerController extends Controller
         }
 
         $tenantId = auth('api')->user()?->tenant_id;
-        if (!$tenantId) return $this->error('Tenant required', 422);
+        if (!$tenantId)
+            return $this->error('Tenant required', 422);
 
         try {
             $drawer = CashDrawer::query()
@@ -46,7 +46,8 @@ class CashDrawerController extends Controller
             }
 
             $q = $drawer->sessions()->with(['movements', 'cashDrawer'])->latest('opened_at');
-            if (!empty($data['status'])) $q->where('status', $data['status']);
+            if (!empty($data['status']))
+                $q->where('status', $data['status']);
 
             $sessions = $q->limit(200)->get();
             return $this->success(CashDrawerSessionResource::collection($sessions));
@@ -68,7 +69,8 @@ class CashDrawerController extends Controller
 
         $tenantId = auth('api')->user()?->tenant_id;
         $userId = auth('api')->id();
-        if (!$tenantId || !$userId) return $this->error('Tenant required', 422);
+        if (!$tenantId || !$userId)
+            return $this->error('Tenant required', 422);
 
         DB::beginTransaction();
         try {
@@ -122,14 +124,16 @@ class CashDrawerController extends Controller
 
         $tenantId = auth('api')->user()?->tenant_id;
         $userId = auth('api')->id();
-        if (!$tenantId || !$userId) return $this->error('Tenant required', 422);
+        if (!$tenantId || !$userId)
+            return $this->error('Tenant required', 422);
 
         try {
             $session->loadMissing('cashDrawer');
             if ((int) $session->cashDrawer?->tenant_id !== (int) $tenantId) {
                 return $this->error('Not found', 404);
             }
-            if ($session->status !== 'open') return $this->error('Session is not open', 422);
+            if ($session->status !== 'open')
+                return $this->error('Session is not open', 422);
 
             $movement = CashMovement::create([
                 'tenant_id' => $tenantId,
@@ -166,7 +170,8 @@ class CashDrawerController extends Controller
 
         $tenantId = auth('api')->user()?->tenant_id;
         $userId = auth('api')->id();
-        if (!$tenantId || !$userId) return $this->error('Tenant required', 422);
+        if (!$tenantId || !$userId)
+            return $this->error('Tenant required', 422);
 
         DB::beginTransaction();
         try {
@@ -180,17 +185,12 @@ class CashDrawerController extends Controller
                 return $this->error('Session is not open', 422);
             }
 
-            $cashPayments = Payment::query()
-                ->where('cash_drawer_session_id', $session->id)
-                ->where('method', 'cash')
-                ->where('status', 'completed')
-                ->sum('amount');
-
+            // Expected cash: opening + all session movements (checkout creates cash_in per sale; manual API uses cash_in/cash_out).
             $cashIn = (float) $session->movements->where('type', 'cash_in')->sum('amount');
             $cashOut = (float) $session->movements->where('type', 'cash_out')->sum('amount');
 
             $opening = (float) $session->opening_balance;
-            $expected = $opening + (float) $cashPayments + $cashIn - $cashOut;
+            $expected = $opening + $cashIn - $cashOut;
             $actual = (float) $data['actual_cash'];
             $discrepancy = $actual - $expected;
 
@@ -253,14 +253,16 @@ class CashDrawerController extends Controller
 
         $tenantId = auth('api')->user()?->tenant_id;
         $userId = auth('api')->id();
-        if (!$tenantId || !$userId) return $this->error('Tenant required', 422);
+        if (!$tenantId || !$userId)
+            return $this->error('Tenant required', 422);
 
         try {
             $session->loadMissing(['cashDrawer', 'movements']);
             if ((int) $session->cashDrawer?->tenant_id !== (int) $tenantId) {
                 return $this->error('Not found', 404);
             }
-            if (!in_array((string) $session->status, ['closed', 'pending_approval'], true)) return $this->error('Only closed sessions can be reconciled', 422);
+            if (!in_array((string) $session->status, ['closed', 'pending_approval'], true))
+                return $this->error('Only closed sessions can be reconciled', 422);
 
             $session->update([
                 'status' => 'reconciled',
