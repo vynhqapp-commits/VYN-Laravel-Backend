@@ -10,16 +10,16 @@ return new class extends Migration
     {
         Schema::table('tenants', function (Blueprint $table) {
             if (!Schema::hasColumn('tenants', 'gender_preference')) {
-                $table->string('gender_preference')->nullable()->after('preferred_locale');
+                $table->string('gender_preference')->nullable();
             }
             if (!Schema::hasColumn('tenants', 'average_rating')) {
-                $table->decimal('average_rating', 3, 2)->nullable()->after('gender_preference');
+                $table->decimal('average_rating', 3, 2)->nullable();
             }
         });
 
         Schema::table('branches', function (Blueprint $table) {
             if (!Schema::hasColumn('branches', 'gender_preference')) {
-                $table->string('gender_preference')->nullable()->after('working_hours');
+                $table->string('gender_preference')->nullable();
             }
         });
     }
