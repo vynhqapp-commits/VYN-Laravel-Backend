@@ -9,6 +9,7 @@ use App\Models\OtpCode;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
@@ -349,6 +350,57 @@ class AuthController extends Controller
             return $this->validationError($e->errors());
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
+        }
+    }
+
+    public function googleAuth(Request $request)
+    {
+        try {
+            $request->validate(['credential' => 'required|string']);
+
+            $response = Http::withToken($request->credential)
+                ->get('https://www.googleapis.com/oauth2/v3/userinfo');
+
+            if ($response->failed()) {
+                return $this->error('Invalid Google credential', 401);
+            }
+
+            $payload = $response->json();
+
+            $googleId = $payload['sub'] ?? null;
+            $email = $payload['email'] ?? null;
+            $name = $payload['name'] ?? $email;
+
+            if (!$googleId || !$email) {
+                return $this->error('Google token missing required fields', 422);
+            }
+
+            $user = User::where('google_id', $googleId)->first()
+                ?? User::where('email', $email)->first();
+
+            if ($user) {
+                if (!$user->google_id) {
+                    $user->update(['google_id' => $googleId]);
+                }
+            } else {
+                $user = User::create([
+                    'name' => $name,
+                    'email' => $email,
+                    'google_id' => $googleId,
+                    'password' => null,
+                    'tenant_id' => null,
+                ]);
+                $user->assignRole(Role::findByName('customer', 'api'));
+            }
+
+            $token = auth('api')->login($user);
+
+            return $this->success($this->tokenPayload($token), 'Google login successful');
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
+        } catch (\Throwable $e) {
+            Log::error('Google auth failed', ['error' => $e->getMessage()]);
+            return $this->error('Google authentication failed', 500);
         }
     }
 

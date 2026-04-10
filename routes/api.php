@@ -27,6 +27,7 @@ Route::prefix('auth')->group(function () {
     Route::post('register/salon-owner',     [AuthController::class, 'registerSalonOwner']);
     Route::post('request-otp',              [AuthController::class, 'sendOtp'])->middleware('throttle:otp');
     Route::post('verify-otp',               [AuthController::class, 'verifyOtp']);
+    Route::post('google',                   [AuthController::class, 'googleAuth']);
 });
 
 // Public booking (no auth, no tenant header required)
