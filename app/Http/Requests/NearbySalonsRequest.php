@@ -5,7 +5,7 @@ namespace App\Http\Requests;
 use App\Http\Requests\Concerns\SalonListFilterRules;
 use Illuminate\Foundation\Http\FormRequest;
 
-class ListSalonsRequest extends FormRequest
+class NearbySalonsRequest extends FormRequest
 {
     use SalonListFilterRules;
 
@@ -17,11 +17,11 @@ class ListSalonsRequest extends FormRequest
     public function rules(): array
     {
         return array_merge([
-            'search' => ['nullable', 'string', 'max:100'],
-        ], $this->salonListFilterRules(), [
+            'lat' => ['required', 'numeric', 'between:-90,90'],
+            'lng' => ['required', 'numeric', 'between:-180,180'],
+            'radius_km' => ['nullable', 'numeric', 'min:0.1', 'max:200'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
-        ]);
+        ], $this->salonListFilterRules());
     }
 }
-

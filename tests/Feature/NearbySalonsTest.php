@@ -65,6 +65,29 @@ class NearbySalonsTest extends TestCase
         $this->getJson('/api/public/salons/nearby?lat=200&lng=0')->assertStatus(422);
         $this->getJson('/api/public/salons/nearby?lat=0&lng=200')->assertStatus(422);
         $this->getJson('/api/public/salons/nearby?lat=0&lng=0&radius_km=0')->assertStatus(422);
+        $this->getJson('/api/public/salons/nearby?lat=0&lng=0&rating_min=6')->assertStatus(422);
+    }
+
+    public function test_nearby_applies_list_filters_rating_min(): void
+    {
+        $anchorLat = 33.8938;
+        $anchorLng = 35.5018;
+
+        $low = $this->createTenant('LowRated');
+        $low->update(['average_rating' => 3.0]);
+        $this->createBranch($low, 33.8940, 35.5020);
+
+        $high = $this->createTenant('HighRated');
+        $high->update(['average_rating' => 4.5]);
+        $this->createBranch($high, 33.8941, 35.5021);
+
+        $res = $this->getJson(
+            '/api/public/salons/nearby?lat=' . $anchorLat . '&lng=' . $anchorLng . '&radius_km=200&rating_min=4'
+        )->assertOk();
+
+        $ids = collect($res->json('data'))->pluck('id')->map(fn ($id) => (string) $id)->all();
+        $this->assertContains((string) $high->id, $ids);
+        $this->assertNotContains((string) $low->id, $ids);
     }
 }
 

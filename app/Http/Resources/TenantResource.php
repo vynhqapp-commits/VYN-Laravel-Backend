@@ -21,6 +21,7 @@ class TenantResource extends JsonResource
             'phone'               => $this->phone,
             'address'             => $this->address,
             'logo'                => $this->logo,
+            'gender_preference'   => $this->gender_preference,
             'created_at'          => $this->created_at,
         ];
     }

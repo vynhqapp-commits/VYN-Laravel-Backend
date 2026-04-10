@@ -346,4 +346,54 @@ class AuthTest extends TestCase
             ->getJson('/api/me')
             ->assertStatus(401);
     }
+
+    // -------------------------------------------------------------------------
+    // SALON PROFILE (salon_owner)
+    // -------------------------------------------------------------------------
+
+    public function test_salon_owner_can_patch_gender_preference_on_salon_profile(): void
+    {
+        $tenant = Tenant::create([
+            'name' => 'Test Salon',
+            'slug' => 'test-salon-' . uniqid(),
+            'subscription_status' => 'active',
+            'timezone' => 'UTC',
+            'currency' => 'USD',
+        ]);
+
+        $user = User::factory()->create([
+            'tenant_id' => $tenant->id,
+        ]);
+        $this->assignRole($user, 'salon_owner');
+        $token = auth('api')->login($user);
+
+        $this->withToken($token)
+            ->patchJson('/api/salon/profile', ['gender_preference' => 'unisex'])
+            ->assertOk()
+            ->assertJsonPath('data.gender_preference', 'unisex');
+
+        $this->assertDatabaseHas('tenants', [
+            'id' => $tenant->id,
+            'gender_preference' => 'unisex',
+        ]);
+    }
+
+    public function test_salon_profile_rejects_invalid_gender_preference(): void
+    {
+        $tenant = Tenant::create([
+            'name' => 'Test Salon Two',
+            'slug' => 'test-salon-two-' . uniqid(),
+            'subscription_status' => 'active',
+            'timezone' => 'UTC',
+            'currency' => 'USD',
+        ]);
+
+        $user = User::factory()->create(['tenant_id' => $tenant->id]);
+        $this->assignRole($user, 'salon_owner');
+        $token = auth('api')->login($user);
+
+        $this->withToken($token)
+            ->patchJson('/api/salon/profile', ['gender_preference' => 'invalid'])
+            ->assertStatus(422);
+    }
 }

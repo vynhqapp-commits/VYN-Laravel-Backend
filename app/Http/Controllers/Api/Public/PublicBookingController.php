@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Public;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\ListSalonsRequest;
+use App\Http\Requests\NearbySalonsRequest;
 use App\Http\Resources\PublicAppointmentResource;
 use App\Http\Resources\PublicBranchResource;
 use App\Http\Resources\PublicSalonResource;
@@ -24,7 +25,6 @@ use App\Services\Notifications\BookingNotificationService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
@@ -48,23 +48,7 @@ class PublicBookingController extends Controller
             ->where('subscription_status', '!=', 'suspended')
             ->orderBy('name');
 
-        $query
-            ->when(
-                array_key_exists('price_min', $validated) || array_key_exists('price_max', $validated),
-                fn($q) => $q->priceRange($validated['price_min'] ?? null, $validated['price_max'] ?? null)
-            )
-            ->when(
-                array_key_exists('rating_min', $validated),
-                fn($q) => $q->minRating($validated['rating_min'] ?? null)
-            )
-            ->when(
-                array_key_exists('availability', $validated),
-                fn($q) => $q->availableOn($validated['availability'] ?? null)
-            )
-            ->when(
-                array_key_exists('gender_preference', $validated),
-                fn($q) => $q->genderPreference($validated['gender_preference'] ?? null)
-            );
+        $this->applyPublicSalonListFilters($query, $validated);
 
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
@@ -101,26 +85,16 @@ class PublicBookingController extends Controller
 
     /**
      * GET /api/public/salons/nearby?lat=&lng=&radius_km=&page=&per_page=
-     * Nearby salons sorted by nearest branch.
+     * Nearby salons sorted by nearest branch. Accepts same list filters as /salons.
      */
-    public function nearbySalons(Request $request): JsonResponse
+    public function nearbySalons(NearbySalonsRequest $request): JsonResponse
     {
-        $v = Validator::make($request->query(), [
-            'lat' => ['required', 'numeric', 'between:-90,90'],
-            'lng' => ['required', 'numeric', 'between:-180,180'],
-            'radius_km' => ['nullable', 'numeric', 'min:0.1', 'max:200'],
-            'page' => ['nullable', 'integer', 'min:1'],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
-        ]);
+        $validated = $request->validated();
 
-        if ($v->fails()) {
-            return $this->validationError($v->errors());
-        }
-
-        $lat = (float) $v->validated()['lat'];
-        $lng = (float) $v->validated()['lng'];
-        $radiusKm = (float) ($v->validated()['radius_km'] ?? 10);
-        $perPage = min((int) ($v->validated()['per_page'] ?? 24), 50);
+        $lat = (float) $validated['lat'];
+        $lng = (float) $validated['lng'];
+        $radiusKm = (float) ($validated['radius_km'] ?? 10);
+        $perPage = min((int) ($validated['per_page'] ?? 24), 50);
 
         // Distance per tenant is min distance across branches.
         // Use Haversine in production DBs; fall back to an approximation for SQLite test DB (missing trig funcs).
@@ -150,6 +124,8 @@ class PublicBookingController extends Controller
             )
             ->orderBy('distance_km');
 
+        $this->applyPublicSalonListFilters($query, $validated);
+
         $result = $query->paginate($perPage);
 
         return response()->json([
@@ -171,6 +147,30 @@ class PublicBookingController extends Controller
                 'next' => $result->nextPageUrl(),
             ],
         ]);
+    }
+
+    /**
+     * @param \Illuminate\Database\Eloquent\Builder<\App\Models\Tenant> $query
+     */
+    private function applyPublicSalonListFilters($query, array $validated): void
+    {
+        $query
+            ->when(
+                array_key_exists('price_min', $validated) || array_key_exists('price_max', $validated),
+                fn ($q) => $q->priceRange($validated['price_min'] ?? null, $validated['price_max'] ?? null)
+            )
+            ->when(
+                array_key_exists('rating_min', $validated),
+                fn ($q) => $q->minRating($validated['rating_min'] ?? null)
+            )
+            ->when(
+                array_key_exists('availability', $validated),
+                fn ($q) => $q->availableOn($validated['availability'] ?? null)
+            )
+            ->when(
+                array_key_exists('gender_preference', $validated),
+                fn ($q) => $q->genderPreference($validated['gender_preference'] ?? null)
+            );
     }
 
     /**
