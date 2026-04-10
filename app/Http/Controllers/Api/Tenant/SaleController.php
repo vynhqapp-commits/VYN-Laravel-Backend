@@ -21,6 +21,9 @@ use App\Models\CommissionRule;
 use App\Models\TipAllocation;
 use App\Models\DebtLedgerEntry;
 use App\Models\CustomerServicePackage;
+use App\Models\CustomerMembership;
+use App\Models\ServicePackageTemplate;
+use App\Models\MembershipPlanTemplate;
 use App\Mail\SaleReceiptMail;
 use App\Services\AuditLogger;
 use App\Services\LedgerService;
@@ -169,6 +172,9 @@ class SaleController extends Controller
                 'payments.*.method' => 'required|string|in:cash,card,bank_transfer,wallet,whish,omt,transfer,mobile',
                 'payments.*.amount' => 'required|numeric|min:0',
                 'payments.*.reference' => 'nullable|string|max:255',
+                // Package / Membership purchase
+                'package_template_id'  => 'nullable|integer|exists:service_package_templates,id',
+                'membership_plan_id'   => 'nullable|integer|exists:membership_plan_templates,id',
                 // Legacy fallback (old clients)
                 'payment_method' => 'nullable|string',
             ]);
@@ -630,6 +636,51 @@ class SaleController extends Controller
                             'is_locked' => false,
                         ]);
                     }
+                }
+            }
+
+            // Create CustomerServicePackage when a package template is sold
+            if (!empty($data['package_template_id']) && !empty($data['customer_id'])) {
+                $tpl = ServicePackageTemplate::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('id', $data['package_template_id'])
+                    ->first();
+                if ($tpl) {
+                    CustomerServicePackage::create([
+                        'tenant_id'          => $tenantId,
+                        'customer_id'        => $data['customer_id'],
+                        'name'               => $tpl->name,
+                        'total_services'     => $tpl->total_sessions,
+                        'remaining_services' => $tpl->total_sessions,
+                        'expires_at'         => $tpl->validity_days
+                            ? Carbon::today()->addDays($tpl->validity_days)
+                            : null,
+                        'status'             => 'active',
+                    ]);
+                }
+            }
+
+            // Create CustomerMembership when a membership plan is sold
+            if (!empty($data['membership_plan_id']) && !empty($data['customer_id'])) {
+                $plan = MembershipPlanTemplate::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('id', $data['membership_plan_id'])
+                    ->first();
+                if ($plan) {
+                    $startDate = Carbon::today();
+                    $renewalDate = $startDate->copy()->addMonths($plan->interval_months);
+                    CustomerMembership::create([
+                        'tenant_id'                  => $tenantId,
+                        'customer_id'                => $data['customer_id'],
+                        'name'                       => $plan->name,
+                        'plan'                       => $plan->description,
+                        'start_date'                 => $startDate,
+                        'renewal_date'               => $renewalDate,
+                        'interval_months'            => $plan->interval_months,
+                        'service_credits_per_renewal' => $plan->credits_per_renewal,
+                        'remaining_services'         => $plan->credits_per_renewal,
+                        'status'                     => 'active',
+                    ]);
                 }
             }
 

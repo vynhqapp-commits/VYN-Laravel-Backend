@@ -158,6 +158,20 @@ Route::middleware('auth:api')->group(function () {
             Route::delete('services/{service}/availability-overrides/{override}', [\App\Http\Controllers\Api\Tenant\ServiceAvailabilityOverrideController::class, 'destroy']);
         });
 
+        // Catalog: Package & Membership templates — read: all salon roles; write: salon_owner, manager
+        Route::middleware('role:salon_owner,manager,receptionist,staff')->group(function () {
+            Route::get('catalog/packages', [\App\Http\Controllers\Api\Tenant\PackageMembershipCatalogController::class, 'indexPackages']);
+            Route::get('catalog/memberships', [\App\Http\Controllers\Api\Tenant\PackageMembershipCatalogController::class, 'indexMemberships']);
+        });
+        Route::middleware('role:salon_owner,manager')->group(function () {
+            Route::post('catalog/packages', [\App\Http\Controllers\Api\Tenant\PackageMembershipCatalogController::class, 'storePackage']);
+            Route::put('catalog/packages/{id}', [\App\Http\Controllers\Api\Tenant\PackageMembershipCatalogController::class, 'updatePackage']);
+            Route::delete('catalog/packages/{id}', [\App\Http\Controllers\Api\Tenant\PackageMembershipCatalogController::class, 'destroyPackage']);
+            Route::post('catalog/memberships', [\App\Http\Controllers\Api\Tenant\PackageMembershipCatalogController::class, 'storeMembership']);
+            Route::put('catalog/memberships/{id}', [\App\Http\Controllers\Api\Tenant\PackageMembershipCatalogController::class, 'updateMembership']);
+            Route::delete('catalog/memberships/{id}', [\App\Http\Controllers\Api\Tenant\PackageMembershipCatalogController::class, 'destroyMembership']);
+        });
+
         // Products — salon_owner, manager (manage) + receptionist, staff (view)
         Route::middleware('role:salon_owner,manager,receptionist,staff')->group(function () {
             Route::get('products', [\App\Http\Controllers\Api\Tenant\ProductController::class, 'index']);
