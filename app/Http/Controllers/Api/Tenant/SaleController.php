@@ -153,7 +153,7 @@ class SaleController extends Controller
                 'customer_id' => 'nullable|exists:customers,id',
                 'appointment_id' => 'nullable|exists:appointments,id',
                 'notes'       => 'nullable|string',
-                'items'       => 'required|array|min:1',
+                'items'       => 'present|array',
                 'items.*.service_id' => 'nullable|exists:services,id',
                 'items.*.product_id' => 'nullable|exists:products,id',
                 'items.*.quantity'   => 'required|numeric|min:1',
@@ -220,6 +220,32 @@ class SaleController extends Controller
                 $qty = (float) $it['quantity'];
                 $unit = (float) $it['unit_price'];
                 $subtotal += $qty * $unit;
+            }
+
+            // Resolve package/membership templates and add their prices to subtotal
+            $packageTemplate = null;
+            $membershipPlan = null;
+            if (!empty($data['package_template_id'])) {
+                $packageTemplate = ServicePackageTemplate::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('id', $data['package_template_id'])
+                    ->first();
+                if ($packageTemplate) {
+                    $subtotal += (float) $packageTemplate->price;
+                }
+            }
+            if (!empty($data['membership_plan_id'])) {
+                $membershipPlan = MembershipPlanTemplate::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('id', $data['membership_plan_id'])
+                    ->first();
+                if ($membershipPlan) {
+                    $subtotal += (float) $membershipPlan->price;
+                }
+            }
+
+            if (empty($data['items']) && !$packageTemplate && !$membershipPlan) {
+                return $this->validationError(['items' => ['At least one item, package, or membership is required.']]);
             }
 
             $tipsAmount = isset($data['tips_amount']) ? (float) $data['tips_amount'] : 0.0;
@@ -303,6 +329,32 @@ class SaleController extends Controller
                     'unit_price'     => $unit,
                     'discount'       => 0,
                     'total'          => $qty * $unit,
+                ]);
+            }
+
+            // Create invoice items for package / membership purchases
+            if ($packageTemplate) {
+                InvoiceItem::create([
+                    'invoice_id'    => $invoice->id,
+                    'itemable_type' => ServicePackageTemplate::class,
+                    'itemable_id'   => $packageTemplate->id,
+                    'name'          => $packageTemplate->name . ' (Package)',
+                    'quantity'      => 1,
+                    'unit_price'    => (float) $packageTemplate->price,
+                    'discount'      => 0,
+                    'total'         => (float) $packageTemplate->price,
+                ]);
+            }
+            if ($membershipPlan) {
+                InvoiceItem::create([
+                    'invoice_id'    => $invoice->id,
+                    'itemable_type' => MembershipPlanTemplate::class,
+                    'itemable_id'   => $membershipPlan->id,
+                    'name'          => $membershipPlan->name . ' (Membership)',
+                    'quantity'      => 1,
+                    'unit_price'    => (float) $membershipPlan->price,
+                    'discount'      => 0,
+                    'total'         => (float) $membershipPlan->price,
                 ]);
             }
 
@@ -640,48 +692,36 @@ class SaleController extends Controller
             }
 
             // Create CustomerServicePackage when a package template is sold
-            if (!empty($data['package_template_id']) && !empty($data['customer_id'])) {
-                $tpl = ServicePackageTemplate::query()
-                    ->where('tenant_id', $tenantId)
-                    ->where('id', $data['package_template_id'])
-                    ->first();
-                if ($tpl) {
-                    CustomerServicePackage::create([
-                        'tenant_id'          => $tenantId,
-                        'customer_id'        => $data['customer_id'],
-                        'name'               => $tpl->name,
-                        'total_services'     => $tpl->total_sessions,
-                        'remaining_services' => $tpl->total_sessions,
-                        'expires_at'         => $tpl->validity_days
-                            ? Carbon::today()->addDays($tpl->validity_days)
-                            : null,
-                        'status'             => 'active',
-                    ]);
-                }
+            if ($packageTemplate && !empty($data['customer_id'])) {
+                CustomerServicePackage::create([
+                    'tenant_id'          => $tenantId,
+                    'customer_id'        => $data['customer_id'],
+                    'name'               => $packageTemplate->name,
+                    'total_services'     => $packageTemplate->total_sessions,
+                    'remaining_services' => $packageTemplate->total_sessions,
+                    'expires_at'         => $packageTemplate->validity_days
+                        ? Carbon::today()->addDays($packageTemplate->validity_days)
+                        : null,
+                    'status'             => 'active',
+                ]);
             }
 
             // Create CustomerMembership when a membership plan is sold
-            if (!empty($data['membership_plan_id']) && !empty($data['customer_id'])) {
-                $plan = MembershipPlanTemplate::query()
-                    ->where('tenant_id', $tenantId)
-                    ->where('id', $data['membership_plan_id'])
-                    ->first();
-                if ($plan) {
-                    $startDate = Carbon::today();
-                    $renewalDate = $startDate->copy()->addMonths($plan->interval_months);
-                    CustomerMembership::create([
-                        'tenant_id'                  => $tenantId,
-                        'customer_id'                => $data['customer_id'],
-                        'name'                       => $plan->name,
-                        'plan'                       => $plan->description,
-                        'start_date'                 => $startDate,
-                        'renewal_date'               => $renewalDate,
-                        'interval_months'            => $plan->interval_months,
-                        'service_credits_per_renewal' => $plan->credits_per_renewal,
-                        'remaining_services'         => $plan->credits_per_renewal,
-                        'status'                     => 'active',
-                    ]);
-                }
+            if ($membershipPlan && !empty($data['customer_id'])) {
+                $startDate = Carbon::today();
+                $renewalDate = $startDate->copy()->addMonths($membershipPlan->interval_months);
+                CustomerMembership::create([
+                    'tenant_id'                  => $tenantId,
+                    'customer_id'                => $data['customer_id'],
+                    'name'                       => $membershipPlan->name,
+                    'plan'                       => $membershipPlan->description,
+                    'start_date'                 => $startDate,
+                    'renewal_date'               => $renewalDate,
+                    'interval_months'            => $membershipPlan->interval_months,
+                    'service_credits_per_renewal' => $membershipPlan->credits_per_renewal,
+                    'remaining_services'         => $membershipPlan->credits_per_renewal,
+                    'status'                     => 'active',
+                ]);
             }
 
             DB::commit();
