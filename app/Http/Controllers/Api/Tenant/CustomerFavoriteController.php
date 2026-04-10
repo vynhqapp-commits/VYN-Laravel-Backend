@@ -55,7 +55,10 @@ class CustomerFavoriteController extends Controller
 
         $customer = $this->primaryCustomerForCurrentUser();
         if (!$customer) {
-            return $this->error('Customer profile not found', 404);
+            $customer = $this->getOrCreateCustomerForSalon((int) $data['salon_id']);
+        }
+        if (!$customer) {
+            return $this->error('Unable to create customer profile', 500);
         }
 
         $favorite = CustomerFavorite::firstOrCreate([
@@ -118,5 +121,22 @@ class CustomerFavoriteController extends Controller
             ->where('user_id', $userId)
             ->orderBy('id')
             ->first();
+    }
+
+    private function getOrCreateCustomerForSalon(int $salonId): ?Customer
+    {
+        $user = auth('api')->user();
+        if (!$user) {
+            return null;
+        }
+
+        return Customer::withoutGlobalScopes()->firstOrCreate(
+            ['user_id' => $user->id, 'tenant_id' => $salonId],
+            [
+                'name'  => $user->name ?? $user->email,
+                'email' => $user->email,
+                'phone' => $user->phone ?? null,
+            ]
+        );
     }
 }
