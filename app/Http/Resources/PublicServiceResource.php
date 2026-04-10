@@ -15,6 +15,7 @@ class PublicServiceResource extends JsonResource
             'description'      => $this->description,
             'duration_minutes' => $this->duration_minutes,
             'price'            => $this->price,
+            'deposit_amount'   => $this->deposit_amount ? (float) $this->deposit_amount : null,
             'category'         => $this->whenLoaded('category', fn () => [
                 'id'   => $this->category->id,
                 'name' => $this->category->name,

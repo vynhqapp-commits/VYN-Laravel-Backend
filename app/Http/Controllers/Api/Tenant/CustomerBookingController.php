@@ -7,6 +7,7 @@ use App\Models\Appointment;
 use App\Models\AppointmentService;
 use App\Models\Customer;
 use App\Models\Staff;
+use App\Models\Tenant;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,7 +15,6 @@ use Illuminate\Support\Facades\DB;
 
 class CustomerBookingController extends Controller
 {
-    private const POLICY_WINDOW_HOURS = 24;
 
     public function index(): JsonResponse
     {
@@ -88,7 +88,16 @@ class CustomerBookingController extends Controller
             return $this->error('Past bookings cannot be cancelled', 422);
         }
 
-        $policy = $this->buildPolicyMeta($startAt);
+        $tenant = Tenant::find($appointment->tenant_id);
+        $policy = $this->buildPolicyMeta($startAt, $tenant);
+
+        if ($policy['violated'] && $policy['mode'] === 'hard') {
+            return $this->error(
+                "Cancellation is not allowed within {$policy['window_hours']} hours of the appointment.",
+                422
+            );
+        }
+
         $appointment->update(['status' => 'cancelled']);
 
         $payload = [
@@ -168,7 +177,15 @@ class CustomerBookingController extends Controller
             return $this->error('Selected slot is no longer available.', 422);
         }
 
-        $policy = $this->buildPolicyMeta($currentStartAt);
+        $tenant = Tenant::find($appointment->tenant_id);
+        $policy = $this->buildPolicyMeta($currentStartAt, $tenant);
+
+        if ($policy['violated'] && $policy['mode'] === 'hard') {
+            return $this->error(
+                "Rescheduling is not allowed within {$policy['window_hours']} hours of the appointment.",
+                422
+            );
+        }
 
         $appointment->update([
             'staff_id' => $staffId,
@@ -318,16 +335,28 @@ class CustomerBookingController extends Controller
         return true;
     }
 
-    private function buildPolicyMeta(Carbon $startsAt): array
+    private function buildPolicyMeta(Carbon $startsAt, ?Tenant $tenant = null): array
     {
+        $mode = $tenant->cancellation_policy_mode ?? 'soft';
+        $windowHours = (int) ($tenant->cancellation_window_hours ?? 24);
+
+        if ($mode === 'none') {
+            return [
+                'window_hours' => 0,
+                'minutes_to_start' => Carbon::now()->diffInMinutes($startsAt, false),
+                'violated' => false,
+                'mode' => 'none',
+            ];
+        }
+
         $minutesToStart = Carbon::now()->diffInMinutes($startsAt, false);
-        $thresholdMinutes = self::POLICY_WINDOW_HOURS * 60;
+        $thresholdMinutes = $windowHours * 60;
 
         return [
-            'window_hours' => self::POLICY_WINDOW_HOURS,
+            'window_hours' => $windowHours,
             'minutes_to_start' => $minutesToStart,
             'violated' => $minutesToStart >= 0 && $minutesToStart < $thresholdMinutes,
-            'mode' => 'soft',
+            'mode' => $mode,
         ];
     }
 }

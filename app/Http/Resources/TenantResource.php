@@ -22,6 +22,8 @@ class TenantResource extends JsonResource
             'address'             => $this->address,
             'logo'                => $this->logo,
             'gender_preference'   => $this->gender_preference,
+            'cancellation_window_hours' => (int) ($this->cancellation_window_hours ?? 24),
+            'cancellation_policy_mode'  => $this->cancellation_policy_mode ?? 'soft',
             'created_at'          => $this->created_at,
         ];
     }

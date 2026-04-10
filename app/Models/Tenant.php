@@ -28,6 +28,12 @@ class Tenant extends BaseTenant
         'preferred_locale',
         'gender_preference',
         'average_rating',
+        'cancellation_window_hours',
+        'cancellation_policy_mode',
+    ];
+
+    protected $casts = [
+        'cancellation_window_hours' => 'integer',
     ];
 
     protected static function booted(): void
