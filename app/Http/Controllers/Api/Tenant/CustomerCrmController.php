@@ -39,6 +39,7 @@ class CustomerCrmController extends Controller
             'service_credits_per_renewal'=> (int) $m->service_credits_per_renewal,
             'remaining_services'         => (int) $m->remaining_services,
             'status'                      => $m->status,
+            'auto_renew'                  => (bool) $m->auto_renew,
         ];
     }
 
@@ -166,6 +167,25 @@ class CustomerCrmController extends Controller
         }
 
         return $this->success($this->membershipResource($membership), 'Membership renewed');
+    }
+
+    public function toggleAutoRenew(Request $request, Customer $customer, CustomerMembership $membership): JsonResponse
+    {
+        if ((int) $membership->customer_id !== (int) $customer->id) {
+            return $this->error('Membership does not belong to this customer', 422);
+        }
+
+        try {
+            $data = $request->validate([
+                'auto_renew' => 'required|boolean',
+            ]);
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
+        }
+
+        $membership->update(['auto_renew' => $data['auto_renew']]);
+
+        return $this->success($this->membershipResource($membership), 'Auto-renew updated');
     }
 }
 

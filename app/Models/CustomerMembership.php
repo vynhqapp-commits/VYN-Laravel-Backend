@@ -20,6 +20,7 @@ class CustomerMembership extends Model
         'service_credits_per_renewal',
         'remaining_services',
         'status',
+        'auto_renew',
     ];
 
     protected $casts = [
@@ -28,6 +29,7 @@ class CustomerMembership extends Model
         'interval_months' => 'integer',
         'service_credits_per_renewal' => 'integer',
         'remaining_services' => 'integer',
+        'auto_renew' => 'boolean',
     ];
 
     public function customer()

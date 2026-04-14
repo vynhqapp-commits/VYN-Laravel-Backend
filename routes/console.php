@@ -11,3 +11,7 @@ Artisan::command('inspire', function () {
 Schedule::command('appointments:send-reminders')
     ->everyMinute()
     ->withoutOverlapping();
+
+Schedule::command('memberships:renew')
+    ->dailyAt('02:00')
+    ->withoutOverlapping();

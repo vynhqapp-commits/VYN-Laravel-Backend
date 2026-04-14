@@ -5,11 +5,14 @@ namespace App\Http\Controllers\Api\Tenant;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ServiceResource;
 use App\Models\Service;
+use App\Models\ServicePricingTier;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
 class ServiceController extends Controller
 {
+    private array $eagerLoads = ['category', 'pricingTiers', 'addOns'];
+
     public function index(Request $request)
     {
         try {
@@ -25,13 +28,12 @@ class ServiceController extends Controller
             $qTerm = trim((string) ($data['q'] ?? ''));
             $perPage = (int) ($data['per_page'] ?? 20);
 
-            $q = Service::with('category');
+            $q = Service::with($this->eagerLoads);
             if ($status === 'active') {
                 $q->where('is_active', true);
             } elseif ($status === 'inactive') {
                 $q->where('is_active', false);
             } elseif (!$includeInactive) {
-                // default behavior remains POS-safe
                 $q->where('is_active', true);
             }
 
@@ -74,10 +76,17 @@ class ServiceController extends Controller
                 'deposit_amount'      => 'nullable|numeric|min:0',
                 'cost'                => 'nullable|numeric|min:0',
                 'is_active'           => 'sometimes|boolean',
+                'pricing_tiers'              => 'nullable|array',
+                'pricing_tiers.*.tier_label' => 'required_with:pricing_tiers|string|max:64',
+                'pricing_tiers.*.price'      => 'required_with:pricing_tiers|numeric|min:0',
             ]);
 
+            $tiers = $data['pricing_tiers'] ?? [];
+            unset($data['pricing_tiers']);
+
             $service = Service::create($data);
-            $service->load('category');
+            $this->syncTiers($service, $tiers);
+            $service->load($this->eagerLoads);
 
             return $this->created(new ServiceResource($service));
 
@@ -91,7 +100,7 @@ class ServiceController extends Controller
     public function show(Service $service)
     {
         try {
-            return $this->success(new ServiceResource($service->load('category')));
+            return $this->success(new ServiceResource($service->load($this->eagerLoads)));
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
         }
@@ -100,7 +109,7 @@ class ServiceController extends Controller
     public function update(Request $request, Service $service)
     {
         try {
-            $service->update($request->validate([
+            $data = $request->validate([
                 'service_category_id' => 'nullable|exists:service_categories,id',
                 'name'                => 'sometimes|string|max:255',
                 'description'         => 'nullable|string',
@@ -109,9 +118,21 @@ class ServiceController extends Controller
                 'deposit_amount'      => 'nullable|numeric|min:0',
                 'cost'                => 'nullable|numeric|min:0',
                 'is_active'           => 'sometimes|boolean',
-            ]));
+                'pricing_tiers'              => 'nullable|array',
+                'pricing_tiers.*.tier_label' => 'required_with:pricing_tiers|string|max:64',
+                'pricing_tiers.*.price'      => 'required_with:pricing_tiers|numeric|min:0',
+            ]);
 
-            return $this->success(new ServiceResource($service->load('category')), 'Service updated');
+            $tiers = $data['pricing_tiers'] ?? null;
+            unset($data['pricing_tiers']);
+
+            $service->update($data);
+
+            if ($tiers !== null) {
+                $this->syncTiers($service, $tiers);
+            }
+
+            return $this->success(new ServiceResource($service->load($this->eagerLoads)), 'Service updated');
 
         } catch (ValidationException $e) {
             return $this->validationError($e->errors());
@@ -127,6 +148,19 @@ class ServiceController extends Controller
             return $this->success(null, 'Service deleted');
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
+        }
+    }
+
+    private function syncTiers(Service $service, array $tiers): void
+    {
+        $service->pricingTiers()->delete();
+
+        foreach ($tiers as $tier) {
+            $service->pricingTiers()->create([
+                'tenant_id'  => $service->tenant_id,
+                'tier_label' => $tier['tier_label'],
+                'price'      => $tier['price'],
+            ]);
         }
     }
 }

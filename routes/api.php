@@ -166,6 +166,12 @@ Route::middleware('auth:api')->group(function () {
             Route::patch('services/{service}/availabilities/{availability}', [\App\Http\Controllers\Api\Tenant\ServiceAvailabilityController::class, 'update']);
             Route::delete('services/{service}/availabilities/{availability}', [\App\Http\Controllers\Api\Tenant\ServiceAvailabilityController::class, 'destroy']);
 
+            // Service add-ons
+            Route::get('services/{service}/add-ons', [\App\Http\Controllers\Api\Tenant\ServiceAddOnController::class, 'index']);
+            Route::post('services/{service}/add-ons', [\App\Http\Controllers\Api\Tenant\ServiceAddOnController::class, 'store']);
+            Route::patch('services/{service}/add-ons/{addOn}', [\App\Http\Controllers\Api\Tenant\ServiceAddOnController::class, 'update']);
+            Route::delete('services/{service}/add-ons/{addOn}', [\App\Http\Controllers\Api\Tenant\ServiceAddOnController::class, 'destroy']);
+
             Route::get('services/{service}/availability-overrides', [\App\Http\Controllers\Api\Tenant\ServiceAvailabilityOverrideController::class, 'index']);
             Route::post('services/{service}/availability-overrides', [\App\Http\Controllers\Api\Tenant\ServiceAvailabilityOverrideController::class, 'store']);
             Route::patch('services/{service}/availability-overrides/{override}', [\App\Http\Controllers\Api\Tenant\ServiceAvailabilityOverrideController::class, 'update']);
@@ -224,6 +230,7 @@ Route::middleware('auth:api')->group(function () {
 
             Route::post('customers/{customer}/packages/{package}/consume', [\App\Http\Controllers\Api\Tenant\CustomerCrmController::class, 'consumePackage']);
             Route::post('customers/{customer}/memberships/{membership}/renew', [\App\Http\Controllers\Api\Tenant\CustomerCrmController::class, 'renewMembership']);
+            Route::patch('customers/{customer}/memberships/{membership}/auto-renew', [\App\Http\Controllers\Api\Tenant\CustomerCrmController::class, 'toggleAutoRenew']);
         });
 
         // Appointments — salon_owner, manager, receptionist, staff (staff: own calendar only)

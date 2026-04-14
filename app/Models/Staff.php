@@ -9,7 +9,7 @@ class Staff extends Model
 {
     use BelongsToTenant;
 
-    protected $fillable = ['tenant_id', 'branch_id', 'user_id', 'name', 'phone', 'specialization', 'color', 'is_active'];
+    protected $fillable = ['tenant_id', 'branch_id', 'user_id', 'name', 'phone', 'specialization', 'pricing_tier_label', 'color', 'is_active'];
 
     protected $casts = ['is_active' => 'boolean'];
 

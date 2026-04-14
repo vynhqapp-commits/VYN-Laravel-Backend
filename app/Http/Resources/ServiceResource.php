@@ -19,6 +19,23 @@ class ServiceResource extends JsonResource
             'cost'             => $this->cost,
             'is_active'        => $this->is_active,
             'category'         => new ServiceCategoryResource($this->whenLoaded('category')),
+            'pricing_tiers'    => $this->whenLoaded('pricingTiers', fn () =>
+                $this->pricingTiers->map(fn ($t) => [
+                    'id'         => $t->id,
+                    'tier_label' => $t->tier_label,
+                    'price'      => $t->price,
+                ])->values()
+            ),
+            'add_ons'          => $this->whenLoaded('addOns', fn () =>
+                $this->addOns->map(fn ($a) => [
+                    'id'               => $a->id,
+                    'name'             => $a->name,
+                    'description'      => $a->description,
+                    'price'            => $a->price,
+                    'duration_minutes' => $a->duration_minutes,
+                    'is_active'        => (bool) $a->is_active,
+                ])->values()
+            ),
         ];
     }
 }
