@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\SuperAdmin\RoleController as SuperAdminRoleControll
 use App\Http\Controllers\Api\SuperAdmin\SubscriptionController as SuperAdminSubscriptionController;
 use App\Http\Controllers\Api\SuperAdmin\AuditController as SuperAdminAuditController;
 use App\Http\Controllers\Api\Public\PublicBookingController;
+use App\Http\Controllers\Api\Tenant\TenantSettingsController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -53,7 +54,7 @@ Route::middleware('auth:api')->group(function () {
     Route::patch('profile',                [AuthController::class, 'updateProfile']);
     Route::post('profile/change-password', [AuthController::class, 'changePassword']);
 
-    // Salon profile — salon_owner only
+    // Salon profile — salon_owner only (legacy aliases)
     Route::middleware('role:salon_owner')->group(function () {
         Route::get('salon/profile',   [AuthController::class, 'salonProfile']);
         Route::patch('salon/profile', [AuthController::class, 'updateSalonProfile']);
@@ -126,9 +127,22 @@ Route::middleware('auth:api')->group(function () {
     */
     Route::middleware(['tenant', 'role:salon_owner,manager,receptionist,staff,customer'])->group(function () {
 
-        // Branches — salon_owner, manager
+        // Tenant (salon) settings — read: salon staff; write: owner, manager
+        Route::middleware('role:salon_owner,manager,receptionist,staff')->group(function () {
+            Route::get('settings', [TenantSettingsController::class, 'index']);
+        });
         Route::middleware('role:salon_owner,manager')->group(function () {
-            Route::apiResource('branches', \App\Http\Controllers\Api\Tenant\BranchController::class);
+            Route::patch('settings', [TenantSettingsController::class, 'update']);
+        });
+
+        // Branches — read: salon staff, write: salon_owner, manager
+        Route::middleware('role:salon_owner,manager,receptionist,staff')->group(function () {
+            Route::get('branches', [\App\Http\Controllers\Api\Tenant\BranchController::class, 'index']);
+            Route::get('branches/{branch}', [\App\Http\Controllers\Api\Tenant\BranchController::class, 'show']);
+        });
+        Route::middleware('role:salon_owner,manager')->group(function () {
+            Route::apiResource('branches', \App\Http\Controllers\Api\Tenant\BranchController::class)
+                ->except(['index', 'show']);
             Route::post('salons/{salon}/photos', [\App\Http\Controllers\Api\Tenant\SalonPhotoController::class, 'store']);
             Route::get('reviews', [\App\Http\Controllers\Api\Tenant\ReviewModerationController::class, 'index']);
             Route::patch('reviews/{review}/moderate', [\App\Http\Controllers\Api\Tenant\ReviewModerationController::class, 'moderate']);

@@ -17,6 +17,7 @@ class UserResource extends JsonResource
             'tenantId'  => $this->tenant_id,
             'role'      => $this->whenLoaded('roles', fn() => $this->roles->first()?->name),
             'roles'     => $this->whenLoaded('roles', fn() => $this->roles->pluck('name')),
+            'permissions' => $this->getAllPermissions()->pluck('name')->values()->all(),
             'created_at'=> $this->created_at,
         ];
     }

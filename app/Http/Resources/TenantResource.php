@@ -18,6 +18,8 @@ class TenantResource extends JsonResource
             'subscription_status' => $this->subscription_status,
             'timezone'            => $this->timezone,
             'currency'            => $this->currency,
+            'vat_rate'            => $this->vat_rate,
+            'preferred_locale'    => $this->preferred_locale,
             'phone'               => $this->phone,
             'address'             => $this->address,
             'logo'                => $this->logo,
