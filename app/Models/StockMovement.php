@@ -9,6 +9,21 @@ class StockMovement extends Model
 {
     use BelongsToTenant;
 
+    /** @var list<string> */
+    public const TYPES = [
+        'in',
+        'out',
+        'sold',
+        'service_deduction',
+        'service_usage',
+        'adjustment',
+        'return',
+        'damage',
+        'theft',
+        'expired',
+        'transfer',
+    ];
+
     protected $fillable = ['tenant_id', 'branch_id', 'product_id', 'type', 'quantity', 'reason', 'reference_type', 'reference_id'];
 
     public function branch() { return $this->belongsTo(Branch::class); }

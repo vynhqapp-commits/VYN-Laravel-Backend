@@ -5,11 +5,13 @@ namespace App\Http\Controllers\Api\Tenant;
 use App\Http\Controllers\Controller;
 use App\Models\Debt;
 use App\Models\Appointment;
+use App\Models\Inventory;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\LedgerEntry;
 use App\Models\Payment;
 use App\Models\Product;
+use App\Models\StockMovement;
 use App\Models\Coupon;
 use App\Models\Service;
 use App\Models\Staff;
@@ -355,6 +357,50 @@ class SaleController extends Controller
                     'unit_price'    => (float) $membershipPlan->price,
                     'discount'      => 0,
                     'total'         => (float) $membershipPlan->price,
+                ]);
+            }
+
+            // Per-branch inventory: deduct sold products (type=sold), separate from service_deduction
+            foreach ($data['items'] as $it) {
+                $productId = $it['product_id'] ?? null;
+                if (!$productId) {
+                    continue;
+                }
+                $qty = (int) $it['quantity'];
+                if ($qty <= 0) {
+                    continue;
+                }
+
+                $productRow = Product::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('id', $productId)
+                    ->first();
+                if (!$productRow) {
+                    throw new \RuntimeException('Invalid product for tenant');
+                }
+
+                /** @var Inventory $inv */
+                $inv = Inventory::query()->firstOrCreate([
+                    'tenant_id' => $tenantId,
+                    'branch_id' => (int) $data['branch_id'],
+                    'product_id' => (int) $productId,
+                ], ['quantity' => 0]);
+
+                $newQty = (int) $inv->quantity - $qty;
+                if ($newQty < 0) {
+                    throw new \RuntimeException('Insufficient stock for product: ' . $productRow->name);
+                }
+                $inv->update(['quantity' => $newQty]);
+
+                StockMovement::create([
+                    'tenant_id' => $tenantId,
+                    'branch_id' => (int) $data['branch_id'],
+                    'product_id' => (int) $productId,
+                    'type' => 'sold',
+                    'quantity' => $qty,
+                    'reason' => 'pos_sale',
+                    'reference_type' => Invoice::class,
+                    'reference_id' => $invoice->id,
                 ]);
             }
 

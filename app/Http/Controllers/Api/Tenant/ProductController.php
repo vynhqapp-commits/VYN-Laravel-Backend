@@ -18,6 +18,7 @@ class ProductController extends Controller
                 'is_active' => 'nullable|boolean',
                 'search' => 'nullable|string|max:100',
                 'category' => 'nullable|string|max:120',
+                'classification' => 'nullable|in:retail,professional,both',
                 'page' => 'nullable|integer|min:1',
                 'per_page' => 'nullable|integer|min:1|max:100',
             ]);
@@ -42,6 +43,9 @@ class ProductController extends Controller
             if (!empty($data['category'])) {
                 $q->where('category', $data['category']);
             }
+            if (!empty($data['classification'])) {
+                $q->where('classification', $data['classification']);
+            }
 
             return $this->paginated($q->paginate((int) ($data['per_page'] ?? 20)));
         } catch (\Throwable $e) {
@@ -56,6 +60,7 @@ class ProductController extends Controller
                 'name' => 'required|string|max:255',
                 'description' => 'nullable|string|max:4000',
                 'category' => 'nullable|string|max:120',
+                'classification' => 'nullable|in:retail,professional,both',
                 'sku' => 'nullable|string|max:80',
                 'cost' => 'nullable|numeric|min:0',
                 'price' => 'nullable|numeric|min:0',
@@ -72,6 +77,7 @@ class ProductController extends Controller
                 'name' => $data['name'],
                 'description' => $data['description'] ?? null,
                 'category' => $data['category'] ?? null,
+                'classification' => $data['classification'] ?? null,
                 'sku' => $data['sku'] ?? null,
                 'cost' => $data['cost'] ?? 0,
                 'price' => $data['price'] ?? ($data['cost'] ?? 0),
@@ -102,6 +108,7 @@ class ProductController extends Controller
                 'name' => 'sometimes|string|max:255',
                 'description' => 'nullable|string|max:4000',
                 'category' => 'nullable|string|max:120',
+                'classification' => 'nullable|in:retail,professional,both',
                 'sku' => 'nullable|string|max:80',
                 'cost' => 'nullable|numeric|min:0',
                 'price' => 'nullable|numeric|min:0',

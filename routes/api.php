@@ -205,6 +205,7 @@ Route::middleware('auth:api')->group(function () {
 
         // Inventory — salon_owner, manager
         Route::middleware('role:salon_owner,manager')->group(function () {
+            Route::get('inventory/{branch}/movements', [\App\Http\Controllers\Api\Tenant\InventoryController::class, 'movements']);
             Route::get('inventory/{branch}', [\App\Http\Controllers\Api\Tenant\InventoryController::class, 'byBranch']);
             Route::post('inventory/stock', [\App\Http\Controllers\Api\Tenant\InventoryController::class, 'adjust']);
         });

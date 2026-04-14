@@ -203,8 +203,12 @@ class ReportController extends Controller
             ->get();
 
         $summary = [
+            'sold' => (int) $movements->where('type', 'sold')->sum('quantity'),
+            'service_used' => (int) $movements->whereIn('type', ['service_deduction', 'service_usage'])->sum('quantity'),
+            'adjustment_in' => (int) $movements->whereIn('type', ['in', 'return'])->sum('quantity'),
+            'adjustment_out' => (int) $movements->whereIn('type', ['out', 'damage', 'theft', 'expired'])->sum('quantity'),
             'in' => (int) $movements->where('type', 'in')->sum('quantity'),
-            'out' => (int) $movements->whereIn('type', ['out', 'service_deduction'])->sum('quantity'),
+            'out' => (int) $movements->whereIn('type', ['out', 'sold', 'service_deduction', 'service_usage', 'damage', 'theft', 'expired'])->sum('quantity'),
             'net' => 0,
         ];
         $summary['net'] = $summary['in'] - $summary['out'];
