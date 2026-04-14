@@ -38,6 +38,64 @@ use Illuminate\Validation\ValidationException;
 
 class SaleController extends Controller
 {
+    private function normalizeCommissionType(string $type): string
+    {
+        return match ($type) {
+            'percentage' => 'percent_service',
+            'fixed' => 'flat_per_service',
+            default => $type,
+        };
+    }
+
+    private function resolveCommissionRule($rules, int $staffId, ?int $serviceId, array $allowedTypes): ?CommissionRule
+    {
+        $filtered = $rules->filter(function (CommissionRule $rule) use ($allowedTypes, $serviceId) {
+            $normalized = $this->normalizeCommissionType((string) $rule->type);
+            if (!in_array($normalized, $allowedTypes, true)) {
+                return false;
+            }
+
+            if ($serviceId !== null) {
+                return (int) ($rule->service_id ?? 0) === $serviceId;
+            }
+
+            return $rule->service_id === null;
+        })->values();
+
+        return $filtered
+            ->sortBy([
+                fn (CommissionRule $rule) => $rule->staff_id === $staffId ? 0 : 1,
+                fn (CommissionRule $rule) => $serviceId !== null && (int) ($rule->service_id ?? 0) === $serviceId ? 0 : 1,
+                fn (CommissionRule $rule) => (int) $rule->id,
+            ])
+            ->first();
+    }
+
+    private function calculateCommissionAmount(CommissionRule $rule, float $baseAmount, int $quantity = 1): float
+    {
+        $type = $this->normalizeCommissionType((string) $rule->type);
+        if ($baseAmount <= 0) {
+            return 0.0;
+        }
+
+        if ($type === 'percent_service' || $type === 'percent_product') {
+            return $baseAmount * ((float) $rule->value / 100.0);
+        }
+
+        if ($type === 'flat_per_service') {
+            return ((float) $rule->value) * max(1, $quantity);
+        }
+
+        if ($type === 'tiered') {
+            $threshold = (float) ($rule->tier_threshold ?? 0);
+            if ($threshold > 0 && $baseAmount >= $threshold) {
+                return $baseAmount * ((float) $rule->value / 100.0);
+            }
+        }
+
+        return 0.0;
+    }
+
     public function index(Request $request): JsonResponse
     {
         try {
@@ -599,47 +657,57 @@ class SaleController extends Controller
                 }
             }
 
-            // Commission + tips allocation (services only; tips separate) when fully paid
+            // Commission + tips allocation when fully paid
             if ($status === 'paid' && $appointment && !empty($appointment->staff_id)) {
                 $staffId = (int) $appointment->staff_id;
-                $serviceBase = $servicesRevenue;
-
-                $rule = CommissionRule::query()
+                $rules = CommissionRule::query()
                     ->where('is_active', true)
                     ->where(function ($q) use ($staffId) {
                         $q->whereNull('staff_id')->orWhere('staff_id', $staffId);
                     })
-                    ->whereNull('service_id') // services-only aggregate for now
-                    ->orderByRaw('CASE WHEN staff_id IS NULL THEN 1 ELSE 0 END') // prefer staff-specific
-                    ->first();
+                    ->get();
 
-                $commissionAmt = 0.0;
-                if ($rule && $serviceBase > 0) {
-                    if ($rule->type === 'percentage') {
-                        $commissionAmt = ((float) $serviceBase) * ((float) $rule->value / 100.0);
-                    } elseif ($rule->type === 'fixed') {
-                        $commissionAmt = (float) $rule->value;
-                    } elseif ($rule->type === 'tiered') {
-                        $threshold = (float) ($rule->tier_threshold ?? 0);
-                        if ((float) $serviceBase >= $threshold && $threshold > 0) {
-                            $commissionAmt = ((float) $serviceBase) * ((float) $rule->value / 100.0);
-                        }
+                $serviceItems = InvoiceItem::query()
+                    ->where('invoice_id', $invoice->id)
+                    ->where('itemable_type', Service::class)
+                    ->get(['itemable_id', 'total', 'quantity']);
+
+                foreach ($serviceItems as $serviceItem) {
+                    $serviceId = (int) $serviceItem->itemable_id;
+                    $serviceBase = (float) $serviceItem->total;
+                    $serviceQtyLine = (int) $serviceItem->quantity;
+                    $rule = $this->resolveCommissionRule(
+                        $rules,
+                        $staffId,
+                        $serviceId,
+                        ['percent_service', 'flat_per_service', 'tiered']
+                    ) ?? $this->resolveCommissionRule(
+                        $rules,
+                        $staffId,
+                        null,
+                        ['percent_service', 'flat_per_service', 'tiered']
+                    );
+
+                    if (!$rule) {
+                        continue;
                     }
-                }
 
-                if ($commissionAmt > 0.009) {
+                    $commissionAmt = $this->calculateCommissionAmount($rule, $serviceBase, $serviceQtyLine);
+                    if ($commissionAmt <= 0.009) {
+                        continue;
+                    }
+
                     $ce = CommissionEntry::create([
                         'tenant_id' => $tenantId,
                         'staff_id' => $staffId,
                         'invoice_id' => $invoice->id,
-                        'commission_rule_id' => $rule?->id,
+                        'commission_rule_id' => $rule->id,
                         'base_amount' => (float) $serviceBase,
                         'commission_amount' => (float) $commissionAmt,
                         'tip_amount' => 0,
                         'status' => 'pending',
                     ]);
 
-                    // ledger expense for commission earned
                     LedgerEntry::create([
                         'tenant_id' => $tenantId,
                         'branch_id' => $invoice->branch_id,
@@ -649,10 +717,43 @@ class SaleController extends Controller
                         'tax_amount' => 0,
                         'reference_type' => CommissionEntry::class,
                         'reference_id' => $ce->id,
-                        'description' => 'Staff commission earned',
+                        'description' => 'Staff commission earned (service)',
                         'entry_date' => now()->toDateString(),
                         'is_locked' => false,
                     ]);
+                }
+
+                if ($productsRevenue > 0) {
+                    $productRule = $this->resolveCommissionRule($rules, $staffId, null, ['percent_product']);
+                    if ($productRule) {
+                        $productCommission = $this->calculateCommissionAmount($productRule, (float) $productsRevenue, 1);
+                        if ($productCommission > 0.009) {
+                            $ce = CommissionEntry::create([
+                                'tenant_id' => $tenantId,
+                                'staff_id' => $staffId,
+                                'invoice_id' => $invoice->id,
+                                'commission_rule_id' => $productRule->id,
+                                'base_amount' => (float) $productsRevenue,
+                                'commission_amount' => (float) $productCommission,
+                                'tip_amount' => 0,
+                                'status' => 'pending',
+                            ]);
+
+                            LedgerEntry::create([
+                                'tenant_id' => $tenantId,
+                                'branch_id' => $invoice->branch_id,
+                                'type' => 'expense',
+                                'category' => 'staff_commission',
+                                'amount' => (float) $productCommission,
+                                'tax_amount' => 0,
+                                'reference_type' => CommissionEntry::class,
+                                'reference_id' => $ce->id,
+                                'description' => 'Staff commission earned (product)',
+                                'entry_date' => now()->toDateString(),
+                                'is_locked' => false,
+                            ]);
+                        }
+                    }
                 }
 
                 if ($tipsAmount > 0.009) {

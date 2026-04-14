@@ -15,11 +15,30 @@ use Illuminate\Validation\Rule;
 
 class CommissionController extends Controller
 {
+    private function normalizeRuleType(string $type): string
+    {
+        return match ($type) {
+            'percentage' => 'percent_service',
+            'fixed' => 'flat_per_service',
+            default => $type,
+        };
+    }
+
+    private function denormalizeRuleType(string $type): string
+    {
+        return match ($type) {
+            'percentage' => 'percent_service',
+            'fixed' => 'flat_per_service',
+            'percent_service', 'percent_product', 'flat_per_service', 'tiered' => $type,
+            default => $type,
+        };
+    }
+
     public function index(): JsonResponse
     {
         try {
             $rules = CommissionRule::query()->latest()->get();
-            return $this->success($rules->map(fn($r) => $this->ruleResource($r))->values());
+            return $this->success($rules->map(fn (CommissionRule $r) => $this->ruleResource($r))->values());
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
         }
@@ -30,9 +49,9 @@ class CommissionController extends Controller
         return [
             'id'              => (string) $rule->id,
             'tenant_id'       => (string) $rule->tenant_id,
-            'name'            => strtoupper((string) $rule->type) . ' commission',
-            'rule_type'       => (string) $rule->type,
-            'type'            => (string) $rule->type,
+            'name'            => strtoupper((string) $this->normalizeRuleType((string) $rule->type)) . ' commission',
+            'rule_type'       => (string) $this->normalizeRuleType((string) $rule->type),
+            'type'            => (string) $this->normalizeRuleType((string) $rule->type),
             'value'           => (float) $rule->value,
             'tier_threshold'  => $rule->tier_threshold !== null ? (float) $rule->tier_threshold : null,
             'staff_id'        => $rule->staff_id ? (string) $rule->staff_id : null,
@@ -46,7 +65,7 @@ class CommissionController extends Controller
     {
         try {
             $data = $request->validate([
-                'type'            => ['required', Rule::in(['percent_service', 'percent_product', 'flat_per_service', 'tiered'])],
+                'type'            => ['required', Rule::in(['percent_service', 'percent_product', 'flat_per_service', 'tiered', 'percentage', 'fixed'])],
                 'value'           => 'required|numeric|min:0.01',
                 'tier_threshold'  => 'nullable|numeric|min:0',
                 'staff_id'        => 'nullable|exists:staff,id',
@@ -56,6 +75,8 @@ class CommissionController extends Controller
         } catch (ValidationException $e) {
             return $this->validationError($e->errors());
         }
+
+        $data['type'] = $this->denormalizeRuleType((string) $data['type']);
 
         $rule = CommissionRule::create(array_merge($data, [
             'tenant_id' => auth()->user()->tenant_id,
@@ -69,7 +90,7 @@ class CommissionController extends Controller
     {
         try {
             $data = $request->validate([
-                'type'           => ['sometimes', Rule::in(['percent_service', 'percent_product', 'flat_per_service', 'tiered'])],
+                'type'           => ['sometimes', Rule::in(['percent_service', 'percent_product', 'flat_per_service', 'tiered', 'percentage', 'fixed'])],
                 'value'          => 'sometimes|numeric|min:0.01',
                 'tier_threshold' => 'nullable|numeric|min:0',
                 'staff_id'       => 'nullable|exists:staff,id',
@@ -78,6 +99,10 @@ class CommissionController extends Controller
             ]);
         } catch (ValidationException $e) {
             return $this->validationError($e->errors());
+        }
+
+        if (isset($data['type'])) {
+            $data['type'] = $this->denormalizeRuleType((string) $data['type']);
         }
 
         $commission->update($data);
@@ -135,6 +160,7 @@ class CommissionController extends Controller
                     'staff_id' => (string) $c->staff_id,
                     'amount' => (string) $c->commission_amount,
                     'type' => 'commission',
+                    'created_at' => optional($c->created_at)->toISOString(),
                     'reversed_at' => $c->status === 'reversed' ? optional($c->updated_at)->toISOString() : null,
                 ];
             });
@@ -145,11 +171,22 @@ class CommissionController extends Controller
                     'staff_id' => (string) $t->staff_id,
                     'amount' => (string) $t->amount,
                     'type' => 'tip',
+                    'created_at' => optional($t->earned_at)->toISOString(),
                     'reversed_at' => null,
                 ];
             });
 
-            return $this->success($commissionRows->concat($tipRows)->values());
+            $records = $commissionRows->concat($tipRows)->values();
+            $summary = [
+                'commission_total' => (float) $commissionRows->sum(fn ($r) => (float) ($r['amount'] ?? 0)),
+                'tip_total' => (float) $tipRows->sum(fn ($r) => (float) ($r['amount'] ?? 0)),
+            ];
+            $summary['total'] = (float) $summary['commission_total'] + (float) $summary['tip_total'];
+
+            return $this->success([
+                'records' => $records,
+                'summary' => $summary,
+            ]);
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
         }

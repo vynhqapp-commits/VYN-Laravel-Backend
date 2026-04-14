@@ -13,9 +13,28 @@ class Service extends Model
 
     protected $casts = ['is_active' => 'boolean', 'price' => 'decimal:2', 'deposit_amount' => 'decimal:2', 'cost' => 'decimal:2'];
 
-    public function category() { return $this->belongsTo(ServiceCategory::class, 'service_category_id'); }
-    public function pricingTiers() { return $this->hasMany(ServicePricingTier::class); }
-    public function addOns() { return $this->hasMany(ServiceAddOn::class); }
-    public function commissionRules() { return $this->hasMany(CommissionRule::class); }
-    public function productUsages() { return $this->hasMany(ServiceProductUsage::class); }
+    public function category()
+    {
+        return $this->belongsTo(ServiceCategory::class, 'service_category_id');
+    }
+    public function pricingTiers()
+    {
+        return $this->hasMany(ServicePricingTier::class);
+    }
+    public function addOns()
+    {
+        return $this->hasMany(ServiceAddOn::class);
+    }
+    public function commissionRules()
+    {
+        return $this->hasMany(CommissionRule::class);
+    }
+    public function productUsages()
+    {
+        return $this->hasMany(ServiceProductUsage::class);
+    }
+    public function staff()
+    {
+        return $this->belongsToMany(Staff::class, 'staff_service')->withTimestamps();
+    }
 }

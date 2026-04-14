@@ -16,28 +16,28 @@ use Illuminate\Support\Facades\Route;
 | Public Routes
 |--------------------------------------------------------------------------
 */
-Route::post('login',       [AuthController::class, 'login']);
-Route::post('register',    [AuthController::class, 'register']);
-Route::post('otp/send',    [AuthController::class, 'sendOtp']);
-Route::post('otp/verify',  [AuthController::class, 'verifyOtp']);
+Route::post('login', [AuthController::class, 'login']);
+Route::post('register', [AuthController::class, 'register']);
+Route::post('otp/send', [AuthController::class, 'sendOtp']);
+Route::post('otp/verify', [AuthController::class, 'verifyOtp']);
 
 // Frontend-friendly /auth/* aliases
 Route::prefix('auth')->group(function () {
-    Route::post('login',                    [AuthController::class, 'login']);
-    Route::post('register/customer',        [AuthController::class, 'registerCustomer']);
-    Route::post('register/salon-owner',     [AuthController::class, 'registerSalonOwner']);
-    Route::post('request-otp',              [AuthController::class, 'sendOtp'])->middleware('throttle:otp');
-    Route::post('verify-otp',               [AuthController::class, 'verifyOtp']);
-    Route::post('google',                   [AuthController::class, 'googleAuth']);
+    Route::post('login', [AuthController::class, 'login']);
+    Route::post('register/customer', [AuthController::class, 'registerCustomer']);
+    Route::post('register/salon-owner', [AuthController::class, 'registerSalonOwner']);
+    Route::post('request-otp', [AuthController::class, 'sendOtp'])->middleware('throttle:otp');
+    Route::post('verify-otp', [AuthController::class, 'verifyOtp']);
+    Route::post('google', [AuthController::class, 'googleAuth']);
 });
 
 // Public booking (no auth, no tenant header required)
 Route::prefix('public')->middleware('throttle:public')->group(function () {
-    Route::get('salons',              [PublicBookingController::class, 'salons']);
-    Route::get('salons/nearby',       [PublicBookingController::class, 'nearbySalons']);
-    Route::get('salons/{slug}',       [PublicBookingController::class, 'salon']);
-    Route::get('availability',        [PublicBookingController::class, 'availability']);
-    Route::post('book',               [PublicBookingController::class, 'book']);
+    Route::get('salons', [PublicBookingController::class, 'salons']);
+    Route::get('salons/nearby', [PublicBookingController::class, 'nearbySalons']);
+    Route::get('salons/{slug}', [PublicBookingController::class, 'salon']);
+    Route::get('availability', [PublicBookingController::class, 'availability']);
+    Route::post('book', [PublicBookingController::class, 'book']);
 });
 
 /*
@@ -47,16 +47,16 @@ Route::prefix('public')->middleware('throttle:public')->group(function () {
 */
 Route::middleware('auth:api')->group(function () {
 
-    Route::get('me',       [AuthController::class, 'me']);
-    Route::post('logout',  [AuthController::class, 'logout']);
+    Route::get('me', [AuthController::class, 'me']);
+    Route::post('logout', [AuthController::class, 'logout']);
 
     // Profile — all authenticated roles
-    Route::patch('profile',                [AuthController::class, 'updateProfile']);
+    Route::patch('profile', [AuthController::class, 'updateProfile']);
     Route::post('profile/change-password', [AuthController::class, 'changePassword']);
 
     // Salon profile — salon_owner only (legacy aliases)
     Route::middleware('role:salon_owner')->group(function () {
-        Route::get('salon/profile',   [AuthController::class, 'salonProfile']);
+        Route::get('salon/profile', [AuthController::class, 'salonProfile']);
         Route::patch('salon/profile', [AuthController::class, 'updateSalonProfile']);
     });
 
@@ -67,12 +67,12 @@ Route::middleware('auth:api')->group(function () {
     |----------------------------------------------------------------------
     */
     Route::middleware('role:customer')->prefix('customer')->group(function () {
-        Route::get('bookings',                        [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'index']);
-        Route::get('bookings/{appointment}',          [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'show']);
+        Route::get('bookings', [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'index']);
+        Route::get('bookings/{appointment}', [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'show']);
         Route::patch('bookings/{appointment}/reschedule', [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'reschedule']);
         Route::post('bookings/{appointment}/rebook', [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'rebook']);
         Route::patch('bookings/{appointment}/cancel', [\App\Http\Controllers\Api\Tenant\CustomerBookingController::class, 'cancel']);
-        Route::post('bookings/{appointment}/review',  [\App\Http\Controllers\Api\Tenant\CustomerReviewController::class, 'store']);
+        Route::post('bookings/{appointment}/review', [\App\Http\Controllers\Api\Tenant\CustomerReviewController::class, 'store']);
         Route::get('reviews', [\App\Http\Controllers\Api\Tenant\CustomerReviewController::class, 'index']);
         Route::get('favorites', [\App\Http\Controllers\Api\Tenant\CustomerFavoriteController::class, 'index']);
         Route::post('favorites', [\App\Http\Controllers\Api\Tenant\CustomerFavoriteController::class, 'store']);
@@ -87,14 +87,14 @@ Route::middleware('auth:api')->group(function () {
     Route::middleware('super_admin')->prefix('admin')->group(function () {
 
         // Tenant management
-        Route::get('tenants',                    [TenantController::class, 'index']);
-        Route::post('tenants',                   [TenantController::class, 'store']);
-        Route::get('tenants/{tenant}',           [TenantController::class, 'show']);
-        Route::put('tenants/{tenant}',           [TenantController::class, 'update']);
-        Route::patch('tenants/{tenant}',         [TenantController::class, 'update']);
-        Route::delete('tenants/{tenant}',        [TenantController::class, 'destroy']);
+        Route::get('tenants', [TenantController::class, 'index']);
+        Route::post('tenants', [TenantController::class, 'store']);
+        Route::get('tenants/{tenant}', [TenantController::class, 'show']);
+        Route::put('tenants/{tenant}', [TenantController::class, 'update']);
+        Route::patch('tenants/{tenant}', [TenantController::class, 'update']);
+        Route::delete('tenants/{tenant}', [TenantController::class, 'destroy']);
         Route::patch('tenants/{tenant}/suspend', [TenantController::class, 'suspend']);
-        Route::patch('tenants/{tenant}/activate',[TenantController::class, 'activate']);
+        Route::patch('tenants/{tenant}/activate', [TenantController::class, 'activate']);
 
         // Platform users
         Route::get('users', [SuperAdminUserController::class, 'index']);
@@ -212,16 +212,22 @@ Route::middleware('auth:api')->group(function () {
 
         // Staff — salon_owner, manager
         Route::middleware('role:salon_owner,manager')->group(function () {
+            Route::get('staff/performance', [\App\Http\Controllers\Api\Tenant\StaffController::class, 'performance']);
             Route::apiResource('staff', \App\Http\Controllers\Api\Tenant\StaffController::class);
-            Route::get('staff/{staff}/schedules',  [\App\Http\Controllers\Api\Tenant\ScheduleController::class, 'index']);
+            Route::get('staff/{staff}/schedules', [\App\Http\Controllers\Api\Tenant\ScheduleController::class, 'index']);
             Route::post('staff/{staff}/schedules', [\App\Http\Controllers\Api\Tenant\ScheduleController::class, 'store']);
+        });
+        Route::middleware('role:salon_owner,manager,staff')->group(function () {
+            Route::get('staff-time-entries', [\App\Http\Controllers\Api\Tenant\StaffTimeController::class, 'index']);
+            Route::post('staff-time-entries/clock-in', [\App\Http\Controllers\Api\Tenant\StaffTimeController::class, 'clockIn']);
+            Route::post('staff-time-entries/{entry}/clock-out', [\App\Http\Controllers\Api\Tenant\StaffTimeController::class, 'clockOut']);
         });
 
         // Customers — salon_owner, manager, receptionist
         Route::middleware('role:salon_owner,manager,receptionist')->group(function () {
             Route::apiResource('customers', \App\Http\Controllers\Api\Tenant\CustomerController::class)
                 ->except(['destroy']);
-            Route::get('customers/{customer}/notes',  [\App\Http\Controllers\Api\Tenant\CustomerController::class, 'notes']);
+            Route::get('customers/{customer}/notes', [\App\Http\Controllers\Api\Tenant\CustomerController::class, 'notes']);
             Route::post('customers/{customer}/notes', [\App\Http\Controllers\Api\Tenant\CustomerController::class, 'addNote']);
 
             // CRM tracking (packages, memberships, per-customer stats)
@@ -330,6 +336,14 @@ Route::middleware('auth:api')->group(function () {
         // Staff earnings — salon_owner, manager (any staff), staff (own only, enforced in controller)
         Route::middleware('role:salon_owner,manager,staff')->group(function () {
             Route::get('commissions/staff/{staff}/earnings', [\App\Http\Controllers\Api\Tenant\CommissionController::class, 'staffEarnings']);
+        });
+        // Time-off requests — staff submit/view own, managers/owners review all
+        Route::middleware('role:salon_owner,manager,staff')->group(function () {
+            Route::get('time-off-requests', [\App\Http\Controllers\Api\Tenant\TimeOffRequestController::class, 'index']);
+            Route::post('time-off-requests', [\App\Http\Controllers\Api\Tenant\TimeOffRequestController::class, 'store']);
+        });
+        Route::middleware('role:salon_owner,manager')->group(function () {
+            Route::patch('time-off-requests/{requestItem}/status', [\App\Http\Controllers\Api\Tenant\TimeOffRequestController::class, 'updateStatus']);
         });
 
         // Gift cards — register POST verify before gift-cards/{card} (literal segment first)
