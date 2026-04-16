@@ -15,11 +15,11 @@ class EnsureTenant
         $finder = app(HeaderTenantFinder::class);
         $tenant = $finder->findForRequest($request);
 
-        if (! $tenant) {
+        if (!$tenant) {
             return response()->json([
                 'success' => false,
                 'message' => 'Tenant header (X-Tenant) is required',
-                'errors'  => ['X-Tenant' => ['Missing or invalid tenant identifier.']],
+                'errors' => ['X-Tenant' => ['Missing or invalid tenant identifier.']],
             ], 400);
         }
 
@@ -31,7 +31,7 @@ class EnsureTenant
         $user = $request->user('api');
         if ($user) {
             $isSuperAdmin = method_exists($user, 'hasRole') && $user->hasRole('super_admin');
-            if (! $isSuperAdmin) {
+            if (!$isSuperAdmin) {
                 // Users are single-tenant in this baseline: user.tenant_id must match current tenant.
                 if ((string) ($user->tenant_id ?? '') !== (string) $tenant->getKey()) {
                     // Ensure we don't leak whether a tenant exists to non-authorized users.

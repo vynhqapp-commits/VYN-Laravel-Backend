@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\SuperAdmin\SubscriptionController as SuperAdminSubs
 use App\Http\Controllers\Api\SuperAdmin\AuditController as SuperAdminAuditController;
 use App\Http\Controllers\Api\Public\PublicBookingController;
 use App\Http\Controllers\Api\Tenant\TenantSettingsController;
+use App\Http\Controllers\Api\Tenant\StaffInvitationController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -29,6 +30,7 @@ Route::prefix('auth')->group(function () {
     Route::post('request-otp', [AuthController::class, 'sendOtp'])->middleware('throttle:otp');
     Route::post('verify-otp', [AuthController::class, 'verifyOtp']);
     Route::post('google', [AuthController::class, 'googleAuth']);
+    Route::post('staff-invitations/accept', [StaffInvitationController::class, 'accept']);
 });
 
 // Public booking (no auth, no tenant header required)
@@ -214,6 +216,10 @@ Route::middleware('auth:api')->group(function () {
         Route::middleware('role:salon_owner,manager')->group(function () {
             Route::get('staff/performance', [\App\Http\Controllers\Api\Tenant\StaffController::class, 'performance']);
             Route::apiResource('staff', \App\Http\Controllers\Api\Tenant\StaffController::class);
+            Route::get('staff-invitations', [StaffInvitationController::class, 'index']);
+            Route::post('staff-invitations', [StaffInvitationController::class, 'store']);
+            Route::post('staff-invitations/{staffInvitation}/resend', [StaffInvitationController::class, 'resend']);
+            Route::post('staff-invitations/{staffInvitation}/revoke', [StaffInvitationController::class, 'revoke']);
             Route::get('staff/{staff}/schedules', [\App\Http\Controllers\Api\Tenant\ScheduleController::class, 'index']);
             Route::post('staff/{staff}/schedules', [\App\Http\Controllers\Api\Tenant\ScheduleController::class, 'store']);
         });
