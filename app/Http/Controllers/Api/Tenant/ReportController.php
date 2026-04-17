@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api\Tenant;
 
 use App\Http\Controllers\Controller;
+use App\Models\Appointment;
+use App\Models\AppointmentService;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\LedgerEntry;
@@ -21,6 +23,14 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ReportController extends Controller
 {
+    private function parseMonthPeriod(string $period): array
+    {
+        [$year, $month] = array_map('intval', explode('-', $period));
+        $start = Carbon::createFromDate($year, $month, 1)->startOfMonth();
+        $end = Carbon::createFromDate($year, $month, 1)->endOfMonth();
+        return [$start, $end];
+    }
+
     public function profitLoss(Request $request): JsonResponse
     {
         try {
@@ -521,6 +531,178 @@ class ReportController extends Controller
             'to' => $data['to'],
             'rows' => $rows,
         ]);
+    }
+
+    public function servicePopularity(Request $request): JsonResponse
+    {
+        try {
+            $data = $request->validate([
+                'period' => 'required|date_format:Y-m',
+                'branch_id' => 'nullable|exists:branches,id',
+                'limit' => 'nullable|integer|min:1|max:50',
+            ]);
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
+        }
+
+        [$start, $end] = $this->parseMonthPeriod($data['period']);
+        $limit = (int) ($data['limit'] ?? 10);
+
+        try {
+            $rows = AppointmentService::query()
+                ->select('appointment_services.service_id', DB::raw('COUNT(*) as appointment_count'))
+                ->join('appointments', 'appointments.id', '=', 'appointment_services.appointment_id')
+                ->whereBetween('appointments.starts_at', [$start, $end])
+                ->where('appointments.status', '!=', 'cancelled')
+                ->when(!empty($data['branch_id']), fn ($q) => $q->where('appointments.branch_id', $data['branch_id']))
+                ->groupBy('appointment_services.service_id')
+                ->orderByDesc('appointment_count')
+                ->limit($limit)
+                ->get();
+
+            $serviceNames = Service::query()
+                ->whereIn('id', $rows->pluck('service_id'))
+                ->pluck('name', 'id');
+
+            $top = $rows->map(fn ($r) => [
+                'service_id' => (string) $r->service_id,
+                'service_name' => (string) ($serviceNames[$r->service_id] ?? 'Service'),
+                'appointment_count' => (int) $r->appointment_count,
+            ])->values();
+
+            return $this->success([
+                'period' => $data['period'],
+                'top_services' => $top,
+            ]);
+        } catch (\Throwable $e) {
+            return $this->error($e->getMessage());
+        }
+    }
+
+    public function clientRetention(Request $request): JsonResponse
+    {
+        try {
+            $data = $request->validate([
+                'period' => 'required|date_format:Y-m',
+                'branch_id' => 'nullable|exists:branches,id',
+            ]);
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
+        }
+
+        [$start, $end] = $this->parseMonthPeriod($data['period']);
+
+        try {
+            $rows = Appointment::query()
+                ->select('customer_id', DB::raw('COUNT(*) as completed_count'))
+                ->whereBetween('starts_at', [$start, $end])
+                ->where('status', 'completed')
+                ->when(!empty($data['branch_id']), fn ($q) => $q->where('branch_id', $data['branch_id']))
+                ->groupBy('customer_id')
+                ->get();
+
+            $cohortSize = (int) $rows->count();
+            $retained = (int) $rows->filter(fn ($r) => (int) $r->completed_count >= 2)->count();
+            $rate = $cohortSize > 0 ? ($retained / $cohortSize) * 100 : 0.0;
+
+            return $this->success([
+                'period' => $data['period'],
+                'cohort_size' => $cohortSize,
+                'retained_customers' => $retained,
+                'retention_rate' => round($rate, 1),
+            ]);
+        } catch (\Throwable $e) {
+            return $this->error($e->getMessage());
+        }
+    }
+
+    public function noShowTrends(Request $request): JsonResponse
+    {
+        try {
+            $data = $request->validate([
+                'period' => 'required|date_format:Y-m',
+                'branch_id' => 'nullable|exists:branches,id',
+                'bucket' => 'nullable|in:day,week',
+            ]);
+        } catch (ValidationException $e) {
+            return $this->validationError($e->errors());
+        }
+
+        [$start, $end] = $this->parseMonthPeriod($data['period']);
+        $bucket = (string) ($data['bucket'] ?? 'week');
+
+        try {
+            $buckets = [];
+
+            if ($bucket === 'day') {
+                $cursor = $start->copy()->startOfDay();
+                while ($cursor->lte($end)) {
+                    $bStart = $cursor->copy()->startOfDay();
+                    $bEnd = $cursor->copy()->endOfDay();
+
+                    $q = Appointment::query()
+                        ->whereBetween('starts_at', [$bStart, $bEnd])
+                        ->when(!empty($data['branch_id']), fn ($qq) => $qq->where('branch_id', $data['branch_id']));
+
+                    $total = (int) (clone $q)->where('status', '!=', 'cancelled')->count();
+                    $noShow = (int) (clone $q)->where('status', 'no_show')->count();
+                    $rate = $total > 0 ? ($noShow / $total) * 100 : 0.0;
+
+                    $buckets[] = [
+                        'bucket_start' => $bStart->toDateString(),
+                        'bucket_label' => $bStart->format('d M'),
+                        'total' => $total,
+                        'no_show' => $noShow,
+                        'no_show_rate' => round($rate, 1),
+                    ];
+
+                    $cursor->addDay();
+                }
+            } else {
+                $cursor = $start->copy()->startOfWeek(Carbon::MONDAY)->startOfDay();
+                $endCursor = $end->copy()->endOfWeek(Carbon::SUNDAY)->endOfDay();
+
+                while ($cursor->lte($endCursor)) {
+                    $bStart = $cursor->copy();
+                    $bEnd = $cursor->copy()->addDays(6)->endOfDay();
+
+                    $inRangeStart = $bStart->copy()->max($start);
+                    $inRangeEnd = $bEnd->copy()->min($end);
+
+                    $q = Appointment::query()
+                        ->whereBetween('starts_at', [$inRangeStart, $inRangeEnd])
+                        ->when(!empty($data['branch_id']), fn ($qq) => $qq->where('branch_id', $data['branch_id']));
+
+                    $total = (int) (clone $q)->where('status', '!=', 'cancelled')->count();
+                    $noShow = (int) (clone $q)->where('status', 'no_show')->count();
+                    $rate = $total > 0 ? ($noShow / $total) * 100 : 0.0;
+
+                    $buckets[] = [
+                        'bucket_start' => $bStart->toDateString(),
+                        'bucket_label' => $bStart->format('d M'),
+                        'total' => $total,
+                        'no_show' => $noShow,
+                        'no_show_rate' => round($rate, 1),
+                    ];
+
+                    $cursor->addWeek();
+                }
+
+                // Only keep buckets that overlap the requested period
+                $buckets = array_values(array_filter($buckets, function ($b) use ($start, $end) {
+                    $d = Carbon::parse($b['bucket_start']);
+                    return $d->lte($end) && $d->copy()->addDays(6)->gte($start);
+                }));
+            }
+
+            return $this->success([
+                'period' => $data['period'],
+                'bucket' => $bucket,
+                'buckets' => $buckets,
+            ]);
+        } catch (\Throwable $e) {
+            return $this->error($e->getMessage());
+        }
     }
 }
 

@@ -318,6 +318,10 @@ Route::middleware('auth:api')->group(function () {
             Route::get('reports/inventory-movement', [\App\Http\Controllers\Api\Tenant\ReportController::class, 'inventoryMovement']);
             Route::get('reports/low-stock', [\App\Http\Controllers\Api\Tenant\ReportController::class, 'lowStock']);
             Route::get('reports/margins', [\App\Http\Controllers\Api\Tenant\ReportController::class, 'margins']);
+            // Analytics (FRD072/073/074)
+            Route::get('reports/service-popularity', [\App\Http\Controllers\Api\Tenant\ReportController::class, 'servicePopularity']);
+            Route::get('reports/client-retention', [\App\Http\Controllers\Api\Tenant\ReportController::class, 'clientRetention']);
+            Route::get('reports/no-show-trends', [\App\Http\Controllers\Api\Tenant\ReportController::class, 'noShowTrends']);
         });
 
         // Monthly Closing — salon_owner, manager
