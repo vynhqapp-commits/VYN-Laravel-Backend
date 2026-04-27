@@ -4,7 +4,7 @@ This backend serves Swagger UI using a static OpenAPI YAML file.
 
 ## Output
 
-- OpenAPI YAML: `storage/app/private/scribe/openapi.yaml`
+- OpenAPI YAML: `public/openapi.yaml`
 - Swagger UI page: `/swagger`
 - Swagger spec endpoint: `/swagger/openapi.yaml`
 
@@ -17,7 +17,7 @@ This backend serves Swagger UI using a static OpenAPI YAML file.
 
 ## Update API docs
 
-Update the YAML file directly at `storage/app/private/scribe/openapi.yaml`.
+Update the YAML file directly at `public/openapi.yaml`.
 
 ## Serve and access Swagger UI
 
@@ -41,7 +41,7 @@ php artisan serve
 
 For new or changed endpoints:
 
-1. Update `storage/app/private/scribe/openapi.yaml`.
+1. Update `public/openapi.yaml`.
 2. Keep response envelope consistency (`success`, `message`, `data` / `errors`).
 3. Verify in `/swagger`.
 
@@ -51,4 +51,4 @@ Use `docs/openapi-coverage-checklist.md` to track route-to-controller coverage a
 
 ## CI recommendation
 
-Validate that `storage/app/private/scribe/openapi.yaml` exists and is up to date as part of release checks.
+Validate that `public/openapi.yaml` exists and is up to date as part of release checks.

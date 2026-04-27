@@ -77,7 +77,7 @@ The scheduler scans every minute and queues reminder jobs for appointments due i
 
 This project provides generated OpenAPI docs for all backend APIs.
 
-- OpenAPI YAML: `storage/app/private/scribe/openapi.yaml`
+- OpenAPI YAML: `public/openapi.yaml`
 - Swagger UI: `/swagger`
 - Swagger spec URL: `/swagger/openapi.yaml`
 
