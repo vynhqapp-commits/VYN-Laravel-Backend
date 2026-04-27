@@ -17,6 +17,14 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
 
+/**
+ * @group Tenant Management
+ *
+ * Staff invitation management endpoints.
+ *
+ * @authenticated
+ * @header X-Tenant string required Tenant identifier (ID or slug). Example: 1
+ */
 class StaffInvitationController extends Controller
 {
     public function index(Request $request)
@@ -144,6 +152,12 @@ class StaffInvitationController extends Controller
         }
     }
 
+    /**
+     * Accept Staff Invitation
+     *
+     * @group Authentication
+     * @unauthenticated
+     */
     public function accept(Request $request)
     {
         try {

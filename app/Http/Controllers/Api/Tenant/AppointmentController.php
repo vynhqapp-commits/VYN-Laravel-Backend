@@ -18,6 +18,14 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
+/**
+ * @group Appointments
+ *
+ * Tenant appointment lifecycle APIs.
+ *
+ * @authenticated
+ * @header X-Tenant string required Tenant identifier (ID or slug). Example: 1
+ */
 class AppointmentController extends Controller
 {
     private const STATUSES = [

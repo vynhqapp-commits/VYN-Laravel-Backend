@@ -29,11 +29,17 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
+/**
+ * @group Public Booking
+ *
+ * Public browsing, availability, and booking APIs.
+ */
 class PublicBookingController extends Controller
 {
     /**
-     * GET /api/public/salons?search=&page=&per_page=
-     * Paginated + searchable list of active salons.
+     * List Salons
+     *
+     * @unauthenticated
      */
     public function salons(ListSalonsRequest $request): JsonResponse
     {
@@ -84,8 +90,9 @@ class PublicBookingController extends Controller
     }
 
     /**
-     * GET /api/public/salons/nearby?lat=&lng=&radius_km=&page=&per_page=
-     * Nearby salons sorted by nearest branch. Accepts same list filters as /salons.
+     * Nearby Salons
+     *
+     * @unauthenticated
      */
     public function nearbySalons(NearbySalonsRequest $request): JsonResponse
     {
@@ -174,8 +181,9 @@ class PublicBookingController extends Controller
     }
 
     /**
-     * GET /api/public/salons/{slug}
-     * Salon profile with branches + services.
+     * Salon Details
+     *
+     * @unauthenticated
      */
     public function salon(string $slug): JsonResponse
     {
@@ -219,8 +227,9 @@ class PublicBookingController extends Controller
     }
 
     /**
-     * GET /api/public/availability?branch_id=&service_id=&date=YYYY-MM-DD
-     * Available slots.
+     * Check Availability
+     *
+     * @unauthenticated
      */
     public function availability(Request $request): JsonResponse
     {
@@ -345,8 +354,9 @@ class PublicBookingController extends Controller
     }
 
     /**
-     * POST /api/public/book
-     * Create a guest appointment.
+     * Book Appointment
+     *
+     * @unauthenticated
      */
     public function book(Request $request): JsonResponse
     {

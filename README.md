@@ -72,3 +72,14 @@ The scheduler scans every minute and queues reminder jobs for appointments due i
 
 - ~24 hours before `starts_at`
 - ~1 hour before `starts_at`
+
+## OpenAPI and Swagger
+
+This project provides generated OpenAPI docs for all backend APIs.
+
+- Generate docs: `php artisan scribe:generate`
+- OpenAPI YAML: `storage/app/private/scribe/openapi.yaml`
+- Swagger UI: `/swagger`
+- Swagger spec URL: `/swagger/openapi.yaml`
+
+Implementation details and maintenance workflow are documented in `docs/openapi.md`.

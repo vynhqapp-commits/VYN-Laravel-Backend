@@ -15,8 +15,20 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
 
+/**
+ * @group Authentication
+ *
+ * Authentication and profile management endpoints.
+ */
 class AuthController extends Controller
 {
+    /**
+     * Login
+     *
+     * Authenticate a user with email/password and return a JWT token payload.
+     *
+     * @unauthenticated
+     */
     public function login(Request $request)
     {
         try {
@@ -35,6 +47,11 @@ class AuthController extends Controller
         }
     }
 
+    /**
+     * Register Generic Customer
+     *
+     * @unauthenticated
+     */
     public function register(Request $request)
     {
         try {
@@ -64,6 +81,11 @@ class AuthController extends Controller
         }
     }
 
+    /**
+     * Register Customer
+     *
+     * @unauthenticated
+     */
     public function registerCustomer(Request $request)
     {
         try {
@@ -94,6 +116,11 @@ class AuthController extends Controller
         }
     }
 
+    /**
+     * Register Salon Owner
+     *
+     * @unauthenticated
+     */
     public function registerSalonOwner(Request $request)
     {
         try {
@@ -132,6 +159,11 @@ class AuthController extends Controller
         }
     }
 
+    /**
+     * Request OTP
+     *
+     * @unauthenticated
+     */
     public function sendOtp(Request $request)
     {
         try {
@@ -202,6 +234,11 @@ class AuthController extends Controller
         }
     }
 
+    /**
+     * Verify OTP
+     *
+     * @unauthenticated
+     */
     public function verifyOtp(Request $request)
     {
         try {
@@ -355,6 +392,11 @@ class AuthController extends Controller
         }
     }
 
+    /**
+     * Google Auth
+     *
+     * @unauthenticated
+     */
     public function googleAuth(Request $request)
     {
         try {

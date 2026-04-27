@@ -36,6 +36,14 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
+/**
+ * @group Sales
+ *
+ * POS sales and receipts APIs.
+ *
+ * @authenticated
+ * @header X-Tenant string required Tenant identifier (ID or slug). Example: 1
+ */
 class SaleController extends Controller
 {
     private function normalizeCommissionType(string $type): string
