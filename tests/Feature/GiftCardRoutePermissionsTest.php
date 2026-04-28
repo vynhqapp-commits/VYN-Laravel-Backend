@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\GiftCard;
+use App\Models\Branch;
+use App\Models\Staff;
 use App\Models\Tenant;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -80,6 +82,13 @@ class GiftCardRoutePermissionsTest extends TestCase
     public function test_receptionist_can_verify_gift_card(): void
     {
         $tenant = Tenant::create(['name' => 'Salon D']);
+        $branch = Branch::withoutGlobalScopes()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Main',
+            'timezone' => 'UTC',
+            'is_active' => true,
+        ]);
+
         GiftCard::withoutGlobalScopes()->create([
             'tenant_id'         => $tenant->id,
             'code'              => 'GC-RECEP-OK',
@@ -96,6 +105,14 @@ class GiftCardRoutePermissionsTest extends TestCase
         $this->assignRole($receptionist, 'receptionist');
         $token = auth('api')->login($receptionist);
 
+        Staff::withoutGlobalScopes()->create([
+            'tenant_id' => $tenant->id,
+            'branch_id' => $branch->id,
+            'user_id' => $receptionist->id,
+            'name' => 'Receptionist',
+            'is_active' => true,
+        ]);
+
         $this->withToken($token)
             ->withHeader('X-Tenant', (string) $tenant->id)
             ->postJson('/api/gift-cards/verify', ['code' => 'GC-RECEP-OK'])
@@ -106,12 +123,26 @@ class GiftCardRoutePermissionsTest extends TestCase
     public function test_receptionist_cannot_issue_gift_card(): void
     {
         $tenant = Tenant::create(['name' => 'Salon E']);
+        $branch = Branch::withoutGlobalScopes()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Main',
+            'timezone' => 'UTC',
+            'is_active' => true,
+        ]);
         $receptionist = User::factory()->create([
             'tenant_id' => $tenant->id,
             'password'  => Hash::make('secret123'),
         ]);
         $this->assignRole($receptionist, 'receptionist');
         $token = auth('api')->login($receptionist);
+
+        Staff::withoutGlobalScopes()->create([
+            'tenant_id' => $tenant->id,
+            'branch_id' => $branch->id,
+            'user_id' => $receptionist->id,
+            'name' => 'Receptionist',
+            'is_active' => true,
+        ]);
 
         $this->withToken($token)
             ->withHeader('X-Tenant', (string) $tenant->id)

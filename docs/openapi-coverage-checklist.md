@@ -166,6 +166,17 @@ Generated from php artisan route:list --path=api --json.
 
 - GET|HEAD api/analytics/franchise -> kpis
 
+## App\Http\Controllers\Api\Tenant\ApprovalRequestController
+
+- GET|HEAD api/approval-requests -> index
+- POST api/approval-requests/{approvalRequest}/approve -> approve
+- POST api/approval-requests/{approvalRequest}/reject -> reject
+
+## App\Http\Controllers\Api\Tenant\FranchiseOwnerInvitationController
+
+- POST api/franchise-owner-invitations -> store
+- POST api/auth/franchise-owner-invitations/accept -> accept
+
 ## App\Http\Controllers\Api\Tenant\GiftCardController
 
 - GET|HEAD api/gift-cards -> index

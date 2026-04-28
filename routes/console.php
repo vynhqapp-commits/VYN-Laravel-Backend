@@ -15,3 +15,7 @@ Schedule::command('appointments:send-reminders')
 Schedule::command('memberships:renew')
     ->dailyAt('02:00')
     ->withoutOverlapping();
+
+Schedule::command('approval-requests:expire')
+    ->hourly()
+    ->withoutOverlapping();

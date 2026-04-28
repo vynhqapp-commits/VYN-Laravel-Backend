@@ -665,6 +665,86 @@ paths:
       tags:
         - Authentication
       security: []
+  /api/auth/franchise-owner-invitations/accept:
+    post:
+      summary: 'Accept Franchise Owner Invitation'
+      operationId: acceptFranchiseOwnerInvitation
+      description: ''
+      parameters:
+        -
+          in: header
+          name: X-Tenant
+          description: ''
+          example: '1'
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+                - password
+                - password_confirmation
+              properties:
+                token:
+                  type: string
+                  example: 'plain_invite_token'
+                name:
+                  type: string
+                  example: 'Fran Owner'
+                password:
+                  type: string
+                  example: 'newpassword123'
+                password_confirmation:
+                  type: string
+                  example: 'newpassword123'
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  success: true
+                  message: 'Invitation accepted successfully. You can now log in.'
+                  data: null
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: 'Invitation accepted successfully. You can now log in.'
+                  data:
+                    nullable: true
+        422:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  success: false
+                  message: 'Validation failed'
+                  errors:
+                    token:
+                      - 'The token field is required.'
+                properties:
+                  success:
+                    type: boolean
+                    example: false
+                  message:
+                    type: string
+                    example: 'Validation failed'
+                  errors:
+                    nullable: true
+      tags:
+        - Authentication
+      security: []
   /api/me:
     get:
       summary: ''
@@ -2619,6 +2699,289 @@ paths:
         name: staffInvitation_id
         description: 'The ID of the staffInvitation.'
         example: 16
+        required: true
+        schema:
+          type: integer
+  /api/franchise-owner-invitations:
+    post:
+      summary: 'Invite Franchise Owner'
+      operationId: postApiFranchiseOwnerInvitations
+      description: ''
+      parameters:
+        -
+          in: header
+          name: X-Tenant
+          description: ''
+          example: '1'
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - branch_ids
+              properties:
+                email:
+                  type: string
+                  example: franchise@example.com
+                name:
+                  type: string
+                  example: 'Fran Owner'
+                branch_ids:
+                  type: array
+                  items:
+                    type: integer
+                  example:
+                    - 1
+                    - 2
+      responses:
+        201:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  success: true
+                  message: 'Invitation sent'
+                  data:
+                    id: 1
+                    email: franchise@example.com
+                    name: 'Fran Owner'
+                    branch_ids:
+                      - 1
+                      - 2
+                    status: pending
+                    expires_at: '2026-04-28T12:00:00.000000Z'
+                    accepted_at: null
+                    revoked_at: null
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  data:
+                    type: object
+        401:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: Unauthenticated.
+        403:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  success: false
+                  message: Forbidden
+        422:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  success: false
+                  message: 'Validation failed'
+                  errors:
+                    email:
+                      - 'The email field is required.'
+      tags:
+        - 'Tenant Management'
+  /api/approval-requests:
+    get:
+      summary: 'List Approval Requests'
+      operationId: getApiApprovalRequests
+      description: ''
+      parameters:
+        -
+          in: header
+          name: X-Tenant
+          description: ''
+          example: '1'
+          schema:
+            type: string
+        -
+          in: query
+          name: status
+          schema:
+            type: string
+            example: pending
+        -
+          in: query
+          name: entity_type
+          schema:
+            type: string
+            example: appointment
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  success: true
+                  message: Success
+                  data: []
+                  meta:
+                    current_page: 1
+                    per_page: 50
+                    total: 0
+                    last_page: 1
+                    from: null
+                    to: null
+        401:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: Unauthenticated.
+        403:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  success: false
+                  message: Forbidden
+      tags:
+        - 'Tenant Management'
+  '/api/approval-requests/{approvalRequest_id}/approve':
+    post:
+      summary: 'Approve Request'
+      operationId: postApiApprovalRequestsApprovalRequest_idApprove
+      description: ''
+      parameters:
+        -
+          in: header
+          name: X-Tenant
+          description: ''
+          example: '1'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  success: true
+                  message: Approved
+                  data:
+                    id: 1
+                    status: approved
+        401:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: Unauthenticated.
+        403:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  success: false
+                  message: Forbidden
+        422:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  success: false
+                  message: 'Approval request is not pending'
+      tags:
+        - 'Tenant Management'
+    parameters:
+      -
+        in: path
+        name: approvalRequest_id
+        description: 'The ID of the approvalRequest.'
+        example: 1
+        required: true
+        schema:
+          type: integer
+  '/api/approval-requests/{approvalRequest_id}/reject':
+    post:
+      summary: 'Reject Request'
+      operationId: postApiApprovalRequestsApprovalRequest_idReject
+      description: ''
+      parameters:
+        -
+          in: header
+          name: X-Tenant
+          description: ''
+          example: '1'
+          schema:
+            type: string
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  success: true
+                  message: Rejected
+                  data:
+                    id: 1
+                    status: rejected
+        401:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: Unauthenticated.
+        403:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  success: false
+                  message: Forbidden
+        422:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  success: false
+                  message: 'Approval request is not pending'
+      tags:
+        - 'Tenant Management'
+    parameters:
+      -
+        in: path
+        name: approvalRequest_id
+        description: 'The ID of the approvalRequest.'
+        example: 1
         required: true
         schema:
           type: integer

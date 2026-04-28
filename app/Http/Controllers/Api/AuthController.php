@@ -204,7 +204,7 @@ class AuthController extends Controller
                         'purpose' => $request->purpose,
                         'code' => $otp->code,
                     ]);
-                    Mail::to($request->identifier)->send(new OtpMail(
+                    Mail::to($request->identifier)->queue(new OtpMail(
                         code: $otp->code,
                         purpose: $request->purpose,
                         expiresInMinutes: $expiresInMinutes,

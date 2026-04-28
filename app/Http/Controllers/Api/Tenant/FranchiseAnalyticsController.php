@@ -37,8 +37,26 @@ class FranchiseAnalyticsController extends Controller
         $to   = Carbon::parse($data['to']   ?? now()->toDateString())->endOfDay();
 
         try {
-            // ── Fetch all branches for this tenant ──────────────────────────
-            $branches = Branch::query()->get(['id', 'name', 'is_active']);
+            $user = auth('api')->user();
+            $tenantId = (int) ($user?->tenant_id ?? 0);
+
+            $branchIds = null;
+            if ($user && method_exists($user, 'hasRole') && $user->hasRole('franchise_owner')) {
+                $branchIds = DB::table('franchise_owner_branches')
+                    ->where('tenant_id', $tenantId)
+                    ->where('user_id', (int) $user->id)
+                    ->pluck('branch_id')
+                    ->map(fn ($id) => (int) $id)
+                    ->values()
+                    ->all();
+            }
+
+            // ── Fetch branches for this viewer ──────────────────────────────
+            $branchesQ = Branch::query()->select(['id', 'name', 'is_active']);
+            if (is_array($branchIds)) {
+                $branchesQ->whereIn('id', $branchIds);
+            }
+            $branches = $branchesQ->get();
 
             if ($branches->isEmpty()) {
                 return $this->success([
@@ -60,6 +78,7 @@ class FranchiseAnalyticsController extends Controller
                 ->select('branch_id', DB::raw('SUM(amount) as total'))
                 ->where('type', 'revenue')
                 ->whereBetween('entry_date', [$from->toDateString(), $to->toDateString()])
+                ->when(is_array($branchIds), fn ($q) => $q->whereIn('branch_id', $branchIds))
                 ->groupBy('branch_id')
                 ->get()
                 ->keyBy('branch_id');
@@ -68,6 +87,7 @@ class FranchiseAnalyticsController extends Controller
             $appointmentsByBranch = Appointment::query()
                 ->select('branch_id', 'status', DB::raw('COUNT(*) as cnt'))
                 ->whereBetween('starts_at', [$from, $to])
+                ->when(is_array($branchIds), fn ($q) => $q->whereIn('branch_id', $branchIds))
                 ->groupBy('branch_id', 'status')
                 ->get()
                 ->groupBy('branch_id');
@@ -80,6 +100,7 @@ class FranchiseAnalyticsController extends Controller
                     DB::raw('SUM(total) as gross_total'),
                 )
                 ->whereBetween('created_at', [$from, $to])
+                ->when(is_array($branchIds), fn ($q) => $q->whereIn('branch_id', $branchIds))
                 ->groupBy('branch_id')
                 ->get()
                 ->keyBy('branch_id');

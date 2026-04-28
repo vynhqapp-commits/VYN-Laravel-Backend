@@ -18,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'super_admin' => \App\Http\Middleware\SuperAdminMiddleware::class,
             'role'        => \App\Http\Middleware\CheckRole::class,
             'tenant'      => \App\Http\Middleware\EnsureTenant::class,
+            'staff_branch' => \App\Http\Middleware\EnforceStaffBranch::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

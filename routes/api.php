@@ -10,6 +10,8 @@ use App\Http\Controllers\Api\SuperAdmin\AuditController as SuperAdminAuditContro
 use App\Http\Controllers\Api\Public\PublicBookingController;
 use App\Http\Controllers\Api\Tenant\TenantSettingsController;
 use App\Http\Controllers\Api\Tenant\StaffInvitationController;
+use App\Http\Controllers\Api\Tenant\ApprovalRequestController;
+use App\Http\Controllers\Api\Tenant\FranchiseOwnerInvitationController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -31,6 +33,7 @@ Route::prefix('auth')->group(function () {
     Route::post('verify-otp', [AuthController::class, 'verifyOtp']);
     Route::post('google', [AuthController::class, 'googleAuth']);
     Route::post('staff-invitations/accept', [StaffInvitationController::class, 'accept']);
+    Route::post('franchise-owner-invitations/accept', [FranchiseOwnerInvitationController::class, 'accept']);
 });
 
 // Public booking (no auth, no tenant header required)
@@ -127,7 +130,7 @@ Route::middleware('auth:api')->group(function () {
     | Accessible by: salon_owner, manager, receptionist, staff, customer
     |----------------------------------------------------------------------
     */
-    Route::middleware(['tenant', 'role:salon_owner,manager,receptionist,staff,customer'])->group(function () {
+    Route::middleware(['tenant', 'staff_branch', 'role:salon_owner,org_owner,franchise_owner,manager,receptionist,staff,customer'])->group(function () {
 
         // Tenant (salon) settings — read: salon staff; write: owner, manager
         Route::middleware('role:salon_owner,manager,receptionist,staff')->group(function () {
@@ -223,6 +226,11 @@ Route::middleware('auth:api')->group(function () {
             Route::get('staff/{staff}/schedules', [\App\Http\Controllers\Api\Tenant\ScheduleController::class, 'index']);
             Route::post('staff/{staff}/schedules', [\App\Http\Controllers\Api\Tenant\ScheduleController::class, 'store']);
         });
+
+        // Franchise owner invitations — salon_owner, org_owner
+        Route::middleware('role:salon_owner,org_owner')->group(function () {
+            Route::post('franchise-owner-invitations', [FranchiseOwnerInvitationController::class, 'store']);
+        });
         Route::middleware('role:salon_owner,manager,staff')->group(function () {
             Route::get('staff-time-entries', [\App\Http\Controllers\Api\Tenant\StaffTimeController::class, 'index']);
             Route::post('staff-time-entries/clock-in', [\App\Http\Controllers\Api\Tenant\StaffTimeController::class, 'clockIn']);
@@ -302,6 +310,13 @@ Route::middleware('auth:api')->group(function () {
             Route::post('debts/{debt}/payment', [\App\Http\Controllers\Api\Tenant\DebtController::class, 'addPayment']);
             Route::post('debts/{debt}/write-off', [\App\Http\Controllers\Api\Tenant\DebtController::class, 'writeOff']);
         });
+
+        // Approval requests — salon_owner, manager
+        Route::middleware('role:salon_owner,manager')->group(function () {
+            Route::get('approval-requests', [ApprovalRequestController::class, 'index']);
+            Route::post('approval-requests/{approvalRequest}/approve', [ApprovalRequestController::class, 'approve']);
+            Route::post('approval-requests/{approvalRequest}/reject', [ApprovalRequestController::class, 'reject']);
+        });
         Route::middleware('role:salon_owner,manager')->group(function () {
             Route::post('debts/write-off-requests/{requestItem}/approve', [\App\Http\Controllers\Api\Tenant\DebtController::class, 'approveWriteOff']);
             Route::post('debts/write-off-requests/{requestItem}/reject', [\App\Http\Controllers\Api\Tenant\DebtController::class, 'rejectWriteOff']);
@@ -330,8 +345,8 @@ Route::middleware('auth:api')->group(function () {
             Route::post('monthly-closings/close', [\App\Http\Controllers\Api\Tenant\MonthlyClosingController::class, 'close']);
         });
 
-        // Franchise / Multi-location analytics — salon_owner only
-        Route::middleware('role:salon_owner')->group(function () {
+        // Franchise / Multi-location analytics — salon_owner, org_owner, franchise_owner
+        Route::middleware('role:salon_owner,org_owner,franchise_owner')->group(function () {
             Route::get('analytics/franchise', [\App\Http\Controllers\Api\Tenant\FranchiseAnalyticsController::class, 'kpis']);
         });
 

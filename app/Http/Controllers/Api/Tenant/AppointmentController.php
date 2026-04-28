@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Tenant;
 use App\Http\Controllers\Controller;
 use App\Models\Appointment;
 use App\Models\AppointmentService;
+use App\Models\ApprovalRequest;
 use App\Models\Customer;
 use App\Models\Inventory;
 use App\Models\Service;
@@ -308,6 +309,23 @@ class AppointmentController extends Controller
     public function destroy(Appointment $appointment): JsonResponse
     {
         try {
+            $user = auth('api')->user();
+            if ($user && method_exists($user, 'hasRole') && $user->hasRole('receptionist')) {
+                $req = ApprovalRequest::create([
+                    'tenant_id' => (int) ($user->tenant_id ?? 0),
+                    'branch_id' => (int) $appointment->branch_id,
+                    'entity_type' => 'appointment',
+                    'entity_id' => (int) $appointment->id,
+                    'requested_action' => 'delete',
+                    'requested_by' => (int) $user->id,
+                    'payload' => null,
+                    'status' => ApprovalRequest::STATUS_PENDING,
+                    'expires_at' => now()->addDays(7),
+                ]);
+
+                return $this->success($req, 'Deletion request submitted for approval', 202);
+            }
+
             $appointment->delete();
             return $this->success(null, 'Appointment cancelled');
         } catch (\Throwable $e) {

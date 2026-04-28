@@ -53,6 +53,16 @@ For new or changed endpoints:
 
 Use `docs/openapi-coverage-checklist.md` to track route-to-controller coverage against `php artisan route:list --path=api --json`.
 
+### Recently added backend surfaces to keep documented
+
+- `App\Http\Controllers\Api\Tenant\ApprovalRequestController`
+  - `GET /api/approval-requests`
+  - `POST /api/approval-requests/{id}/approve`
+  - `POST /api/approval-requests/{id}/reject`
+- `App\Http\Controllers\Api\Tenant\FranchiseOwnerInvitationController`
+  - `POST /api/franchise-owner-invitations`
+  - `POST /api/auth/franchise-owner-invitations/accept`
+
 ## CI recommendation
 
 Validate that `public/openapi.yaml` exists and is up to date as part of release checks.
