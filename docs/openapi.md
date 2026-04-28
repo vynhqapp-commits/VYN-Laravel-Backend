@@ -19,6 +19,10 @@ This backend serves Swagger UI using a static OpenAPI YAML file.
 
 Update the YAML file directly at `public/openapi.yaml`.
 
+### Server URL (Try it out)
+
+Paths in this spec already include the `/api` prefix (for example `/api/login`). The OpenAPI `servers` entry must be the **site origin only** (no `/api` suffix), for example `https://admin.vynhq.com`. If you set `https://example.com/api` while paths are `/api/...`, Swagger will call `https://example.com/api/api/...` and requests will fail.
+
 ## Serve and access Swagger UI
 
 1. Start app locally:

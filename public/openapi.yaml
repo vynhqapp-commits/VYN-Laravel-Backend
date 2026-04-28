@@ -5,7 +5,11 @@ info:
   version: 1.0.0
 servers:
   -
-    url: 'http://localhost/api'
+    url: https://admin.vynhq.com
+    description: Production
+  -
+    url: http://127.0.0.1:8000
+    description: Local (php artisan serve)
 tags:
   -
     name: Authentication
