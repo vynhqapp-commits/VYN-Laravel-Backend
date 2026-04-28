@@ -25,68 +25,15 @@ use App\Models\Staff;
 use App\Models\StockMovement;
 use App\Models\Tenant;
 use App\Models\TipAllocation;
+use App\Services\Commissions\CommissionCalculationService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class PosCheckoutService
 {
-    private function normalizeCommissionType(string $type): string
-    {
-        return match ($type) {
-            'percentage' => 'percent_service',
-            'fixed' => 'flat_per_service',
-            default => $type,
-        };
-    }
-
-    private function resolveCommissionRule($rules, int $staffId, ?int $serviceId, array $allowedTypes): ?CommissionRule
-    {
-        $filtered = $rules->filter(function (CommissionRule $rule) use ($allowedTypes, $serviceId) {
-            $normalized = $this->normalizeCommissionType((string) $rule->type);
-            if (!in_array($normalized, $allowedTypes, true)) {
-                return false;
-            }
-
-            if ($serviceId !== null) {
-                return (int) ($rule->service_id ?? 0) === $serviceId;
-            }
-
-            return $rule->service_id === null;
-        })->values();
-
-        return $filtered
-            ->sortBy([
-                fn (CommissionRule $rule) => $rule->staff_id === $staffId ? 0 : 1,
-                fn (CommissionRule $rule) => $serviceId !== null && (int) ($rule->service_id ?? 0) === $serviceId ? 0 : 1,
-                fn (CommissionRule $rule) => (int) $rule->id,
-            ])
-            ->first();
-    }
-
-    private function calculateCommissionAmount(CommissionRule $rule, float $baseAmount, int $quantity = 1): float
-    {
-        $type = $this->normalizeCommissionType((string) $rule->type);
-        if ($baseAmount <= 0) {
-            return 0.0;
-        }
-
-        if ($type === 'percent_service' || $type === 'percent_product') {
-            return $baseAmount * ((float) $rule->value / 100.0);
-        }
-
-        if ($type === 'flat_per_service') {
-            return ((float) $rule->value) * max(1, $quantity);
-        }
-
-        if ($type === 'tiered') {
-            $threshold = (float) ($rule->tier_threshold ?? 0);
-            if ($threshold > 0 && $baseAmount >= $threshold) {
-                return $baseAmount * ((float) $rule->value / 100.0);
-            }
-        }
-
-        return 0.0;
-    }
+    public function __construct(
+        private readonly CommissionCalculationService $commissionCalculation,
+    ) {}
 
     /**
      * Create a sale (invoice + related side-effects) and return the persisted invoice.
@@ -502,12 +449,12 @@ class PosCheckoutService
                     $serviceId = (int) $serviceItem->itemable_id;
                     $serviceBase = (float) $serviceItem->total;
                     $serviceQtyLine = (int) $serviceItem->quantity;
-                    $rule = $this->resolveCommissionRule(
+                    $rule = $this->commissionCalculation->resolveCommissionRule(
                         $rules,
                         $staffId,
                         $serviceId,
                         ['percent_service', 'flat_per_service', 'tiered']
-                    ) ?? $this->resolveCommissionRule(
+                    ) ?? $this->commissionCalculation->resolveCommissionRule(
                         $rules,
                         $staffId,
                         null,
@@ -516,7 +463,7 @@ class PosCheckoutService
 
                     if (!$rule) continue;
 
-                    $commissionAmt = $this->calculateCommissionAmount($rule, $serviceBase, $serviceQtyLine);
+                    $commissionAmt = $this->commissionCalculation->calculateCommissionAmount($rule, $serviceBase, $serviceQtyLine);
                     if ($commissionAmt <= 0.009) continue;
 
                     $ce = CommissionEntry::create([
@@ -546,9 +493,9 @@ class PosCheckoutService
                 }
 
                 if ($productsRevenue > 0) {
-                    $productRule = $this->resolveCommissionRule($rules, $staffId, null, ['percent_product']);
+                    $productRule = $this->commissionCalculation->resolveCommissionRule($rules, $staffId, null, ['percent_product']);
                     if ($productRule) {
-                        $productCommission = $this->calculateCommissionAmount($productRule, (float) $productsRevenue, 1);
+                        $productCommission = $this->commissionCalculation->calculateCommissionAmount($productRule, (float) $productsRevenue, 1);
                         if ($productCommission > 0.009) {
                             $ce = CommissionEntry::create([
                                 'tenant_id' => $tenantId,

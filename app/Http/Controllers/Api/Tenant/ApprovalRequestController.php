@@ -3,34 +3,33 @@
 namespace App\Http\Controllers\Api\Tenant;
 
 use App\Http\Controllers\Controller;
-use App\Models\Appointment;
+use App\Http\Requests\Api\Tenant\DecideApprovalRequestRequest;
+use App\Http\Requests\Api\Tenant\IndexApprovalRequestsRequest;
 use App\Models\ApprovalRequest;
-use App\Models\Invoice;
-use App\Services\SaleRefundService;
+use App\Services\Approvals\ApprovalRequestActionService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 
 class ApprovalRequestController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function __construct(
+        private readonly ApprovalRequestActionService $approvalActions,
+    ) {}
+
+    public function index(IndexApprovalRequestsRequest $request): JsonResponse
     {
-        try {
-            $data = $request->validate([
-                'status' => 'nullable|in:pending,approved,rejected,expired',
-                'entity_type' => 'nullable|string|max:64',
-            ]);
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
-        }
+        $data = $request->validated();
 
         try {
             $q = ApprovalRequest::query()
                 ->with(['branch', 'requestedBy', 'decidedBy'])
                 ->latest('id');
 
-            if (!empty($data['status'])) $q->where('status', $data['status']);
-            if (!empty($data['entity_type'])) $q->where('entity_type', $data['entity_type']);
+            if (! empty($data['status'])) {
+                $q->where('status', $data['status']);
+            }
+            if (! empty($data['entity_type'])) {
+                $q->where('entity_type', $data['entity_type']);
+            }
 
             return $this->paginated($q->paginate(50));
         } catch (\Throwable $e) {
@@ -38,19 +37,15 @@ class ApprovalRequestController extends Controller
         }
     }
 
-    public function approve(Request $request, ApprovalRequest $approvalRequest, SaleRefundService $refunds): JsonResponse
+    public function approve(DecideApprovalRequestRequest $request, ApprovalRequest $approvalRequest): JsonResponse
     {
-        try {
-            $data = $request->validate([
-                'notes' => 'nullable|string|max:255',
-            ]);
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
-        }
+        $data = $request->validated();
 
         $actorId = (int) auth('api')->id();
         $tenantId = (int) auth('api')->user()?->tenant_id;
-        if (!$tenantId) return $this->error('Tenant required', 422);
+        if (! $tenantId) {
+            return $this->error('Tenant required', 422);
+        }
 
         try {
             if ($approvalRequest->status !== ApprovalRequest::STATUS_PENDING) {
@@ -60,10 +55,11 @@ class ApprovalRequestController extends Controller
                 $approvalRequest->update([
                     'status' => ApprovalRequest::STATUS_EXPIRED,
                 ]);
+
                 return $this->error('Approval request has expired', 422);
             }
 
-            $this->performApprovedAction($approvalRequest, $refunds, $tenantId, $actorId, $data['notes'] ?? null);
+            $this->approvalActions->executeApproved($approvalRequest, $tenantId, $actorId, $data['notes'] ?? null);
 
             $approvalRequest->update([
                 'status' => ApprovalRequest::STATUS_APPROVED,
@@ -77,19 +73,15 @@ class ApprovalRequestController extends Controller
         }
     }
 
-    public function reject(Request $request, ApprovalRequest $approvalRequest): JsonResponse
+    public function reject(DecideApprovalRequestRequest $request, ApprovalRequest $approvalRequest): JsonResponse
     {
-        try {
-            $data = $request->validate([
-                'notes' => 'nullable|string|max:255',
-            ]);
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
-        }
+        $data = $request->validated();
 
         $actorId = (int) auth('api')->id();
         $tenantId = (int) auth('api')->user()?->tenant_id;
-        if (!$tenantId) return $this->error('Tenant required', 422);
+        if (! $tenantId) {
+            return $this->error('Tenant required', 422);
+        }
 
         try {
             if ($approvalRequest->status !== ApprovalRequest::STATUS_PENDING) {
@@ -110,37 +102,4 @@ class ApprovalRequestController extends Controller
             return $this->error($e->getMessage(), 422);
         }
     }
-
-    private function performApprovedAction(
-        ApprovalRequest $approvalRequest,
-        SaleRefundService $refunds,
-        int $tenantId,
-        int $actorId,
-        ?string $notes
-    ): void {
-        $entityType = (string) $approvalRequest->entity_type;
-        $action = (string) $approvalRequest->requested_action;
-
-        if ($entityType === 'appointment' && $action === 'delete') {
-            $appointment = Appointment::query()->findOrFail((int) $approvalRequest->entity_id);
-            if ((int) $appointment->tenant_id !== $tenantId) {
-                throw new \RuntimeException('Invalid appointment for tenant');
-            }
-            $appointment->delete();
-            return;
-        }
-
-        if ($entityType === 'sale' && $action === 'refund') {
-            $sale = Invoice::query()->findOrFail((int) $approvalRequest->entity_id);
-            if ((int) $sale->tenant_id !== $tenantId) {
-                throw new \RuntimeException('Invalid sale for tenant');
-            }
-            $refundReason = (string) (($approvalRequest->payload['refund_reason'] ?? null) ?: ($notes ?: 'Refund approved'));
-            $refunds->refund($sale, $actorId, $tenantId, $refundReason);
-            return;
-        }
-
-        throw new \RuntimeException('Unsupported approval request action');
-    }
 }
-

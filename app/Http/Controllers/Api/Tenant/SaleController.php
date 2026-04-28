@@ -3,41 +3,24 @@
 namespace App\Http\Controllers\Api\Tenant;
 
 use App\Http\Controllers\Controller;
-use App\Models\Debt;
-use App\Models\Appointment;
-use App\Models\Inventory;
+use App\Http\Requests\Api\Tenant\IndexSalesRequest;
+use App\Http\Requests\Api\Tenant\NotifySaleReceiptRequest;
+use App\Http\Requests\Api\Tenant\RefundSaleRequest;
+use App\Http\Requests\Api\Tenant\StoreSaleRequest;
+use App\Mail\SaleReceiptMail;
+use App\Models\ApprovalRequest;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
-use App\Models\LedgerEntry;
 use App\Models\Payment;
 use App\Models\Product;
-use App\Models\StockMovement;
-use App\Models\Coupon;
 use App\Models\Service;
-use App\Models\Staff;
-use App\Models\Tenant;
-use App\Models\CashDrawer;
-use App\Models\CashMovement;
-use App\Models\CommissionEntry;
-use App\Models\CommissionRule;
-use App\Models\TipAllocation;
-use App\Models\DebtLedgerEntry;
-use App\Models\CustomerServicePackage;
-use App\Models\CustomerMembership;
-use App\Models\ServicePackageTemplate;
-use App\Models\MembershipPlanTemplate;
-use App\Mail\SaleReceiptMail;
 use App\Services\AuditLogger;
 use App\Services\LedgerService;
-use App\Models\ApprovalRequest;
 use App\Services\PosCheckoutService;
 use App\Services\SaleRefundService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Validation\ValidationException;
 
 /**
  * @group Sales
@@ -49,75 +32,14 @@ use Illuminate\Validation\ValidationException;
  */
 class SaleController extends Controller
 {
-    private function normalizeCommissionType(string $type): string
+    public function __construct(
+        private readonly PosCheckoutService $posCheckout,
+        private readonly SaleRefundService $saleRefund,
+    ) {}
+
+    public function index(IndexSalesRequest $request): JsonResponse
     {
-        return match ($type) {
-            'percentage' => 'percent_service',
-            'fixed' => 'flat_per_service',
-            default => $type,
-        };
-    }
-
-    private function resolveCommissionRule($rules, int $staffId, ?int $serviceId, array $allowedTypes): ?CommissionRule
-    {
-        $filtered = $rules->filter(function (CommissionRule $rule) use ($allowedTypes, $serviceId) {
-            $normalized = $this->normalizeCommissionType((string) $rule->type);
-            if (!in_array($normalized, $allowedTypes, true)) {
-                return false;
-            }
-
-            if ($serviceId !== null) {
-                return (int) ($rule->service_id ?? 0) === $serviceId;
-            }
-
-            return $rule->service_id === null;
-        })->values();
-
-        return $filtered
-            ->sortBy([
-                fn (CommissionRule $rule) => $rule->staff_id === $staffId ? 0 : 1,
-                fn (CommissionRule $rule) => $serviceId !== null && (int) ($rule->service_id ?? 0) === $serviceId ? 0 : 1,
-                fn (CommissionRule $rule) => (int) $rule->id,
-            ])
-            ->first();
-    }
-
-    private function calculateCommissionAmount(CommissionRule $rule, float $baseAmount, int $quantity = 1): float
-    {
-        $type = $this->normalizeCommissionType((string) $rule->type);
-        if ($baseAmount <= 0) {
-            return 0.0;
-        }
-
-        if ($type === 'percent_service' || $type === 'percent_product') {
-            return $baseAmount * ((float) $rule->value / 100.0);
-        }
-
-        if ($type === 'flat_per_service') {
-            return ((float) $rule->value) * max(1, $quantity);
-        }
-
-        if ($type === 'tiered') {
-            $threshold = (float) ($rule->tier_threshold ?? 0);
-            if ($threshold > 0 && $baseAmount >= $threshold) {
-                return $baseAmount * ((float) $rule->value / 100.0);
-            }
-        }
-
-        return 0.0;
-    }
-
-    public function index(Request $request): JsonResponse
-    {
-        try {
-            $data = $request->validate([
-                'branch_id' => 'nullable|exists:branches,id',
-                'from'      => 'nullable|date_format:Y-m-d',
-                'to'        => 'nullable|date_format:Y-m-d|after_or_equal:from',
-            ]);
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
-        }
+        $data = $request->validated();
 
         try {
             $q = Invoice::query()->with(['branch', 'payments'])->latest();
@@ -216,42 +138,9 @@ class SaleController extends Controller
         }
     }
 
-    public function store(Request $request, PosCheckoutService $checkout): JsonResponse
+    public function store(StoreSaleRequest $request): JsonResponse
     {
-        try {
-            $data = $request->validate([
-                'branch_id'   => 'required|exists:branches,id',
-                'customer_id' => 'nullable|exists:customers,id',
-                'appointment_id' => 'nullable|exists:appointments,id',
-                'notes'       => 'nullable|string',
-                'items'       => 'present|array',
-                'items.*.service_id' => 'nullable|exists:services,id',
-                'items.*.product_id' => 'nullable|exists:products,id',
-                'items.*.quantity'   => 'required|numeric|min:1',
-                'items.*.unit_price' => 'required|numeric|min:0',
-                // Optional Week-5 revenue classification
-                'tips_amount' => 'nullable|numeric|min:0',
-                'tip_allocation_mode' => 'nullable|in:single,equal_split,custom',
-                'tip_allocations' => 'nullable|array',
-                'tip_allocations.*.staff_id' => 'required_with:tip_allocations|exists:staff,id',
-                'tip_allocations.*.amount' => 'nullable|numeric|min:0',
-                'gift_card_amount' => 'nullable|numeric|min:0',
-                'discount_type' => 'nullable|in:flat,percent',
-                'discount_value' => 'nullable|numeric|min:0',
-                'discount_code' => 'nullable|string|max:64',
-                'payments'    => 'nullable|array',
-                'payments.*.method' => 'required|string|in:cash,card,bank_transfer,wallet,whish,omt,transfer,mobile',
-                'payments.*.amount' => 'required|numeric|min:0',
-                'payments.*.reference' => 'nullable|string|max:255',
-                // Package / Membership purchase
-                'package_template_id'  => 'nullable|integer|exists:service_package_templates,id',
-                'membership_plan_id'   => 'nullable|integer|exists:membership_plan_templates,id',
-                // Legacy fallback (old clients)
-                'payment_method' => 'nullable|string',
-            ]);
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
-        }
+        $data = $request->validated();
 
         $tenantId = auth('api')->user()?->tenant_id;
         if (!$tenantId) return $this->error('Tenant required', 422);
@@ -263,7 +152,7 @@ class SaleController extends Controller
         }
 
         try {
-            $invoice = $checkout->checkout($data, (int) $tenantId, (int) auth('api')->id());
+            $invoice = $this->posCheckout->checkout($data, (int) $tenantId, (int) auth('api')->id());
 
             return $this->created([
                 'id' => (string) $invoice->id,
@@ -294,15 +183,9 @@ class SaleController extends Controller
         }
     }
 
-    public function refund(Request $request, Invoice $sale, SaleRefundService $refunds): JsonResponse
+    public function refund(RefundSaleRequest $request, Invoice $sale): JsonResponse
     {
-        try {
-            $data = $request->validate([
-                'refund_reason' => 'nullable|string|max:255',
-            ]);
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
-        }
+        $data = $request->validated();
 
         $tenantId = auth('api')->user()?->tenant_id;
         if (!$tenantId) return $this->error('Tenant required', 422);
@@ -327,22 +210,16 @@ class SaleController extends Controller
         }
 
         try {
-            $refunds->refund($sale, (int) auth('api')->id(), (int) $tenantId, $data['refund_reason'] ?? null);
+            $this->saleRefund->refund($sale, (int) auth('api')->id(), (int) $tenantId, $data['refund_reason'] ?? null);
             return $this->success(null, 'Refund processed');
         } catch (\Throwable $e) {
             return $this->error($e->getMessage(), 422);
         }
     }
 
-    public function notifyReceipt(Request $request, Invoice $sale): JsonResponse
+    public function notifyReceipt(NotifySaleReceiptRequest $request, Invoice $sale): JsonResponse
     {
-        try {
-            $data = $request->validate([
-                'channel' => 'required|in:email,sms',
-            ]);
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
-        }
+        $data = $request->validated();
 
         $sale->load(['customer', 'branch', 'items', 'payments']);
         if (!$sale->customer) {

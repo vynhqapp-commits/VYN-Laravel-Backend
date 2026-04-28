@@ -3,15 +3,14 @@
 namespace App\Http\Controllers\Api\SuperAdmin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\SuperAdmin\PlatformDateRangeReportRequest;
 use App\Models\Appointment;
 use App\Models\Invoice;
 use App\Models\LedgerEntry;
 use App\Models\Tenant;
 use App\Models\User;
 use Carbon\Carbon;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 
 class PlatformReportController extends Controller
 {
@@ -30,16 +29,9 @@ class PlatformReportController extends Controller
         }
     }
 
-    public function financial(Request $request)
+    public function financial(PlatformDateRangeReportRequest $request)
     {
-        try {
-            $data = $request->validate([
-                'from' => 'required|date_format:Y-m-d',
-                'to' => 'required|date_format:Y-m-d|after_or_equal:from',
-            ]);
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
-        }
+        $data = $request->validated();
 
         try {
             $from = Carbon::parse($data['from'])->startOfDay();
@@ -65,16 +57,9 @@ class PlatformReportController extends Controller
         }
     }
 
-    public function franchiseKpis(Request $request)
+    public function franchiseKpis(PlatformDateRangeReportRequest $request)
     {
-        try {
-            $data = $request->validate([
-                'from' => 'required|date_format:Y-m-d',
-                'to' => 'required|date_format:Y-m-d|after_or_equal:from',
-            ]);
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
-        }
+        $data = $request->validated();
 
         try {
             $from = Carbon::parse($data['from'])->startOfDay();

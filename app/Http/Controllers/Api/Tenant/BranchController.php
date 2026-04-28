@@ -3,26 +3,26 @@
 namespace App\Http\Controllers\Api\Tenant;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\Tenant\IndexBranchesRequest;
+use App\Http\Requests\Api\Tenant\StoreBranchRequest;
+use App\Http\Requests\Api\Tenant\UpdateBranchRequest;
 use App\Http\Resources\BranchResource;
 use App\Models\Branch;
-use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 
 class BranchController extends Controller
 {
-    public function index(Request $request)
+    public function index(IndexBranchesRequest $request)
     {
         try {
-            $data = $request->validate([
-                'include_inactive' => 'nullable|boolean',
-                'q' => 'nullable|string|max:255',
-            ]);
+            $data = $request->validated();
 
             $includeInactive = filter_var($data['include_inactive'] ?? false, FILTER_VALIDATE_BOOLEAN);
             $qTerm = trim((string) ($data['q'] ?? ''));
 
             $q = Branch::with('staff');
-            if (!$includeInactive) $q->where('is_active', true);
+            if (! $includeInactive) {
+                $q->where('is_active', true);
+            }
             if ($qTerm !== '') {
                 $q->where(function ($sub) use ($qTerm) {
                     $sub->where('name', 'like', "%{$qTerm}%")
@@ -38,26 +38,10 @@ class BranchController extends Controller
         }
     }
 
-    public function store(Request $request)
+    public function store(StoreBranchRequest $request)
     {
         try {
-            $data = $request->validate([
-                'name'               => 'required|string|max:255',
-                'phone'              => 'nullable|string',
-                'contact_email'      => 'nullable|email|max:255',
-                'address'            => 'nullable|string',
-                'timezone'           => 'nullable|string',
-                'working_hours'      => 'nullable|string|max:4000',
-                'gender_preference'  => 'nullable|in:ladies,gents,unisex',
-                'lat'                => 'nullable|numeric',
-                'lng'                => 'nullable|numeric',
-                'is_active'          => 'sometimes|boolean',
-            ]);
-
-            return $this->created(new BranchResource(Branch::create($data)));
-
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
+            return $this->created(new BranchResource(Branch::create($request->validated())));
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
         }
@@ -72,26 +56,12 @@ class BranchController extends Controller
         }
     }
 
-    public function update(Request $request, Branch $branch)
+    public function update(UpdateBranchRequest $request, Branch $branch)
     {
         try {
-            $branch->update($request->validate([
-                'name'               => 'sometimes|string|max:255',
-                'phone'              => 'nullable|string',
-                'contact_email'      => 'nullable|email|max:255',
-                'address'            => 'nullable|string',
-                'timezone'           => 'nullable|string',
-                'working_hours'      => 'nullable|string|max:4000',
-                'gender_preference'  => 'nullable|in:ladies,gents,unisex',
-                'lat'                => 'nullable|numeric',
-                'lng'                => 'nullable|numeric',
-                'is_active'          => 'sometimes|boolean',
-            ]));
+            $branch->update($request->validated());
 
             return $this->success(new BranchResource($branch), 'Branch updated');
-
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
         }

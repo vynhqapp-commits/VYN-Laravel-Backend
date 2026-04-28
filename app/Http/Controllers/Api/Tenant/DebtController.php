@@ -3,6 +3,10 @@
 namespace App\Http\Controllers\Api\Tenant;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\Tenant\AddDebtPaymentRequest;
+use App\Http\Requests\Api\Tenant\IndexDebtsRequest;
+use App\Http\Requests\Api\Tenant\ListDebtWriteOffRequestsRequest;
+use App\Http\Requests\Api\Tenant\WriteOffDebtRequest;
 use App\Http\Resources\DebtLedgerEntryResource;
 use App\Models\Customer;
 use App\Models\Debt;
@@ -11,21 +15,13 @@ use App\Models\DebtWriteOffRequest;
 use App\Services\AuditLogger;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 
 class DebtController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function index(IndexDebtsRequest $request): JsonResponse
     {
-        try {
-            $data = $request->validate([
-                'customer_id' => 'required|exists:customers,id',
-            ]);
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
-        }
+        $data = $request->validated();
 
         $tenantId = auth('api')->user()?->tenant_id;
         if (!$tenantId) return $this->error('Tenant required', 422);
@@ -55,15 +51,9 @@ class DebtController extends Controller
         }
     }
 
-    public function addPayment(Request $request, Debt $debt): JsonResponse
+    public function addPayment(AddDebtPaymentRequest $request, Debt $debt): JsonResponse
     {
-        try {
-            $data = $request->validate([
-                'amount' => 'required|numeric|min:0.01',
-            ]);
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
-        }
+        $data = $request->validated();
 
         $tenantId = auth('api')->user()?->tenant_id;
         $userId = auth('api')->id();
@@ -175,16 +165,9 @@ class DebtController extends Controller
         }
     }
 
-    public function writeOff(Request $request, Debt $debt): JsonResponse
+    public function writeOff(WriteOffDebtRequest $request, Debt $debt): JsonResponse
     {
-        try {
-            $payload = $request->validate([
-                'reason' => 'nullable|string|max:255',
-                'submit_for_approval' => 'nullable|boolean',
-            ]);
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
-        }
+        $payload = $request->validated();
 
         $tenantId = auth('api')->user()?->tenant_id;
         $userId = auth('api')->id();
@@ -266,15 +249,9 @@ class DebtController extends Controller
         }
     }
 
-    public function writeOffRequests(Request $request): JsonResponse
+    public function writeOffRequests(ListDebtWriteOffRequestsRequest $request): JsonResponse
     {
-        try {
-            $data = $request->validate([
-                'status' => 'nullable|in:pending,approved,rejected',
-            ]);
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
-        }
+        $data = $request->validated();
 
         $rows = DebtWriteOffRequest::query()
             ->with(['debt:id,customer_id,remaining_amount,status', 'requestedBy:id,name', 'approvedBy:id,name'])

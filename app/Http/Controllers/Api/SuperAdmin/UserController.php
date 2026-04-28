@@ -3,26 +3,19 @@
 namespace App\Http\Controllers\Api\SuperAdmin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\SuperAdmin\IndexAdminUsersRequest;
+use App\Http\Requests\Api\SuperAdmin\StoreAdminUserRequest;
+use App\Http\Requests\Api\SuperAdmin\UpdateAdminUserRequest;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Services\AuditLogger;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
 
 class UserController extends Controller
 {
-    public function index(Request $request)
+    public function index(IndexAdminUsersRequest $request)
     {
-        try {
-            $data = $request->validate([
-                'tenant_id' => 'nullable|exists:tenants,id',
-                'role' => 'nullable|string',
-                'q' => 'nullable|string|max:255',
-            ]);
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
-        }
+        $data = $request->validated();
 
         try {
             $q = User::query()->with(['roles'])->latest();
@@ -58,19 +51,9 @@ class UserController extends Controller
         }
     }
 
-    public function store(Request $request)
+    public function store(StoreAdminUserRequest $request)
     {
-        try {
-            $data = $request->validate([
-                'email' => 'required|email|max:255|unique:users,email',
-                'name' => 'nullable|string|max:255',
-                'password' => 'nullable|string|min:8',
-                'tenant_id' => 'nullable|exists:tenants,id',
-                'role' => 'required|in:super_admin,salon_owner,manager,staff,customer',
-            ]);
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
-        }
+        $data = $request->validated();
 
         try {
             $user = User::create([
@@ -98,18 +81,9 @@ class UserController extends Controller
         }
     }
 
-    public function update(Request $request, User $user)
+    public function update(UpdateAdminUserRequest $request, User $user)
     {
-        try {
-            $data = $request->validate([
-                'name' => 'nullable|string|max:255',
-                'tenant_id' => 'nullable|exists:tenants,id',
-                'role' => 'nullable|in:super_admin,salon_owner,manager,staff,customer',
-                'password' => 'nullable|string|min:8',
-            ]);
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
-        }
+        $data = $request->validated();
 
         try {
             if (array_key_exists('name', $data)) $user->name = $data['name'] ?? $user->name;

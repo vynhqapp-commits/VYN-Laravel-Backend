@@ -3,10 +3,9 @@
 namespace App\Http\Controllers\Api\SuperAdmin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\SuperAdmin\UpsertTenantSubscriptionRequest;
 use App\Models\Subscription;
 use App\Models\Tenant;
-use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 
 class SubscriptionController extends Controller
 {
@@ -33,19 +32,9 @@ class SubscriptionController extends Controller
         }
     }
 
-    public function upsertForTenant(Request $request, Tenant $tenant)
+    public function upsertForTenant(UpsertTenantSubscriptionRequest $request, Tenant $tenant)
     {
-        try {
-            $data = $request->validate([
-                'plan' => 'required|in:basic,pro,enterprise',
-                'status' => 'required|in:active,suspended,trial,cancelled',
-                'starts_at' => 'nullable|date_format:Y-m-d',
-                'ends_at' => 'nullable|date_format:Y-m-d',
-                'notes' => 'nullable|string|max:255',
-            ]);
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
-        }
+        $data = $request->validated();
 
         try {
             $sub = Subscription::query()->updateOrCreate(

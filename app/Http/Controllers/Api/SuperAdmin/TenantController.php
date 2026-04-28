@@ -3,10 +3,10 @@
 namespace App\Http\Controllers\Api\SuperAdmin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\SuperAdmin\StoreTenantRequest;
+use App\Http\Requests\Api\SuperAdmin\UpdateTenantRequest;
 use App\Http\Resources\TenantResource;
 use App\Models\Tenant;
-use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 use App\Services\AuditLogger;
 
 class TenantController extends Controller
@@ -21,27 +21,16 @@ class TenantController extends Controller
         }
     }
 
-    public function store(Request $request)
+    public function store(StoreTenantRequest $request)
     {
         try {
-            $data = $request->validate([
-                'name'     => 'required|string|max:255',
-                'domain'   => 'nullable|string|unique:tenants',
-                'plan'     => 'nullable|in:basic,pro,enterprise',
-                'timezone' => 'nullable|string',
-                'currency' => 'nullable|string|size:3',
-                'phone'    => 'nullable|string',
-                'address'  => 'nullable|string',
-            ]);
+            $data = $request->validated();
 
             $tenant = Tenant::create($data);
             AuditLogger::log(optional($request->user('api'))->id, (int) $tenant->id, 'admin.tenant.create', [
                 'name' => $tenant->name,
             ]);
             return $this->created(new TenantResource($tenant));
-
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
         }
@@ -56,18 +45,10 @@ class TenantController extends Controller
         }
     }
 
-    public function update(Request $request, Tenant $tenant)
+    public function update(UpdateTenantRequest $request, Tenant $tenant)
     {
         try {
-            $data = $request->validate([
-                'name'     => 'sometimes|string|max:255',
-                'domain'   => 'sometimes|string|unique:tenants,domain,' . $tenant->id,
-                'plan'     => 'sometimes|in:basic,pro,enterprise',
-                'timezone' => 'sometimes|string',
-                'currency' => 'sometimes|string|size:3',
-                'phone'    => 'nullable|string',
-                'address'  => 'nullable|string',
-            ]);
+            $data = $request->validated();
 
             $tenant->update($data);
             AuditLogger::log(optional($request->user('api'))->id, (int) $tenant->id, 'admin.tenant.update', [
@@ -75,9 +56,6 @@ class TenantController extends Controller
             ]);
 
             return $this->success(new TenantResource($tenant), 'Tenant updated');
-
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
         }

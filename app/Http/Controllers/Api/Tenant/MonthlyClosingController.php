@@ -3,17 +3,16 @@
 namespace App\Http\Controllers\Api\Tenant;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\Tenant\CloseMonthlyPeriodRequest;
 use App\Models\LedgerEntry;
 use App\Models\MonthlyClosing;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 
 class MonthlyClosingController extends Controller
 {
-    public function index(Request $request): JsonResponse
+    public function index(): JsonResponse
     {
         try {
             $closings = MonthlyClosing::query()
@@ -40,17 +39,9 @@ class MonthlyClosingController extends Controller
         }
     }
 
-    public function close(Request $request): JsonResponse
+    public function close(CloseMonthlyPeriodRequest $request): JsonResponse
     {
-        try {
-            $data = $request->validate([
-                'year'  => 'required|integer|min:2000|max:2100',
-                'month' => 'required|integer|min:1|max:12',
-                'notes' => 'nullable|string|max:500',
-            ]);
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
-        }
+        $data = $request->validated();
 
         $tenantId = auth('api')->user()?->tenant_id;
         if (!$tenantId) return $this->error('Tenant required', 422);

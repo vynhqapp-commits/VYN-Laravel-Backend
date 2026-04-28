@@ -3,26 +3,15 @@
 namespace App\Http\Controllers\Api\SuperAdmin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\SuperAdmin\IndexAuditLogsRequest;
 use App\Models\AuditLog;
 use Carbon\Carbon;
-use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 
 class AuditController extends Controller
 {
-    public function index(Request $request)
+    public function index(IndexAuditLogsRequest $request)
     {
-        try {
-            $data = $request->validate([
-                'from' => 'nullable|date_format:Y-m-d',
-                'to' => 'nullable|date_format:Y-m-d',
-                'actor_id' => 'nullable|exists:users,id',
-                'tenant_id' => 'nullable|exists:tenants,id',
-                'action' => 'nullable|string|max:255',
-            ]);
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
-        }
+        $data = $request->validated();
 
         try {
             $q = AuditLog::query()->with(['actor:id,email,name', 'tenant:id,name'])->latest();

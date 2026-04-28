@@ -3,16 +3,24 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\AuthProfileUpdateRequest;
+use App\Http\Requests\Api\AuthSalonProfileUpdateRequest;
+use App\Http\Requests\Api\ChangeAuthPasswordRequest;
+use App\Http\Requests\Api\GoogleAuthRequest;
+use App\Http\Requests\Api\LoginRequest;
+use App\Http\Requests\Api\RegisterCustomerRequest;
+use App\Http\Requests\Api\RegisterSalonOwnerRequest;
+use App\Http\Requests\Api\RegisterUserRequest;
+use App\Http\Requests\Api\SendOtpRequest;
+use App\Http\Requests\Api\VerifyOtpRequest;
 use App\Http\Resources\UserResource;
 use App\Mail\OtpMail;
 use App\Models\OtpCode;
 use App\Models\User;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
 
 /**
@@ -29,19 +37,14 @@ class AuthController extends Controller
      *
      * @unauthenticated
      */
-    public function login(Request $request)
+    public function login(LoginRequest $request)
     {
         try {
-            $request->validate(['email' => 'required|email', 'password' => 'required']);
-
-            if (!$token = auth('api')->attempt($request->only('email', 'password'))) {
+            if (! $token = auth('api')->attempt($request->only('email', 'password'))) {
                 return $this->unauthorized('Invalid credentials');
             }
 
             return $this->success($this->tokenPayload($token), 'Login successful');
-
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
         }
@@ -52,15 +55,9 @@ class AuthController extends Controller
      *
      * @unauthenticated
      */
-    public function register(Request $request)
+    public function register(RegisterUserRequest $request)
     {
         try {
-            $request->validate([
-                'name' => 'required|string|max:255',
-                'email' => 'required|email|unique:users',
-                'password' => 'required|min:6|confirmed',
-            ]);
-
             $user = User::create([
                 'name' => $request->name,
                 'email' => $request->email,
@@ -73,9 +70,6 @@ class AuthController extends Controller
             $token = auth('api')->login($user);
 
             return $this->created($this->tokenPayload($token), 'Registration successful');
-
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
         }
@@ -86,16 +80,9 @@ class AuthController extends Controller
      *
      * @unauthenticated
      */
-    public function registerCustomer(Request $request)
+    public function registerCustomer(RegisterCustomerRequest $request)
     {
         try {
-            $request->validate([
-                'email' => 'required|email|unique:users',
-                'password' => 'required|min:6',
-                'full_name' => 'nullable|string|max:255',
-                'phone' => 'nullable|string|max:30',
-            ]);
-
             $user = User::create([
                 'name' => $request->full_name ?? $request->email,
                 'email' => $request->email,
@@ -108,9 +95,6 @@ class AuthController extends Controller
             $token = auth('api')->login($user);
 
             return $this->created($this->tokenPayload($token), 'Registration successful');
-
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
         }
@@ -121,18 +105,9 @@ class AuthController extends Controller
      *
      * @unauthenticated
      */
-    public function registerSalonOwner(Request $request)
+    public function registerSalonOwner(RegisterSalonOwnerRequest $request)
     {
         try {
-            $request->validate([
-                'salon_name' => 'required|string|max:255',
-                'salon_address' => 'nullable|string|max:255',
-                'email' => 'required|email|unique:users',
-                'password' => 'required|min:6',
-                'full_name' => 'nullable|string|max:255',
-                'phone' => 'nullable|string|max:30',
-            ]);
-
             $tenant = \App\Models\Tenant::create([
                 'name' => $request->salon_name,
                 'address' => $request->salon_address,
@@ -151,9 +126,6 @@ class AuthController extends Controller
             $token = auth('api')->login($user);
 
             return $this->created($this->tokenPayload($token), 'Salon account created successfully');
-
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
         }
@@ -164,23 +136,9 @@ class AuthController extends Controller
      *
      * @unauthenticated
      */
-    public function sendOtp(Request $request)
+    public function sendOtp(SendOtpRequest $request)
     {
         try {
-            // Accept simple { email } from frontend or full { identifier, type, purpose }
-            $email = $request->input('email') ?? $request->input('identifier');
-            $request->merge([
-                'identifier' => $email,
-                'type' => $request->input('type', 'email'),
-                'purpose' => $request->input('purpose', 'login'),
-            ]);
-
-            $request->validate([
-                'identifier' => 'required|string',
-                'type' => 'required|in:phone,email',
-                'purpose' => 'required|in:login,register,reset_password',
-            ]);
-
             OtpCode::where('identifier', $request->identifier)
                 ->where('type', $request->type)
                 ->where('purpose', $request->purpose)
@@ -226,9 +184,6 @@ class AuthController extends Controller
             }
 
             return $this->success(null, 'OTP sent successfully');
-
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
         }
@@ -239,24 +194,9 @@ class AuthController extends Controller
      *
      * @unauthenticated
      */
-    public function verifyOtp(Request $request)
+    public function verifyOtp(VerifyOtpRequest $request)
     {
         try {
-            // Accept simple { email, code } from frontend or full { identifier, type, purpose, code }
-            $email = $request->input('email') ?? $request->input('identifier');
-            $request->merge([
-                'identifier' => $email,
-                'type' => $request->input('type', 'email'),
-                'purpose' => $request->input('purpose', 'login'),
-            ]);
-
-            $request->validate([
-                'identifier' => 'required|string',
-                'type' => 'required|in:phone,email',
-                'purpose' => 'required|in:login,register,reset_password',
-                'code' => 'required|string|size:6',
-            ]);
-
             $otp = OtpCode::where('identifier', $request->identifier)
                 ->where('type', $request->type)
                 ->where('purpose', $request->purpose)
@@ -264,7 +204,7 @@ class AuthController extends Controller
                 ->where('is_used', false)
                 ->first();
 
-            if (!$otp || !$otp->isValid()) {
+            if (! $otp || ! $otp->isValid()) {
                 return $this->error('Invalid or expired OTP', 422);
             }
 
@@ -273,16 +213,13 @@ class AuthController extends Controller
             $field = $request->type === 'email' ? 'email' : 'phone';
             $user = User::where($field, $request->identifier)->first();
 
-            if (!$user) {
+            if (! $user) {
                 return $this->success(['verified' => true], 'OTP verified');
             }
 
             $token = auth('api')->login($user);
 
             return $this->success($this->tokenPayload($token), 'OTP verified and logged in');
-
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
         }
@@ -319,74 +256,45 @@ class AuthController extends Controller
         }
     }
 
-    public function updateSalonProfile(Request $request)
+    public function updateSalonProfile(AuthSalonProfileUpdateRequest $request)
     {
         try {
             $user = auth('api')->user();
             $tenant = \App\Models\Tenant::findOrFail($user->tenant_id);
 
-            $data = $request->validate([
-                'name'                       => 'sometimes|string|max:255',
-                'phone'                      => 'nullable|string|max:30',
-                'address'                    => 'nullable|string|max:500',
-                'timezone'                   => 'nullable|string|max:100',
-                'currency'                   => 'nullable|string|size:3',
-                'logo'                       => 'nullable|string|max:500',
-                'gender_preference'          => 'nullable|in:ladies,gents,unisex',
-                'cancellation_window_hours'  => 'nullable|integer|min:0|max:168',
-                'cancellation_policy_mode'   => 'nullable|in:soft,hard,none',
-            ]);
-
-            $tenant->update($data);
+            $tenant->update($request->validated());
 
             return $this->success(new \App\Http\Resources\TenantResource($tenant->fresh()), 'Salon profile updated');
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
         }
     }
 
-    public function updateProfile(Request $request)
+    public function updateProfile(AuthProfileUpdateRequest $request)
     {
         try {
             $user = auth('api')->user();
-
-            $data = $request->validate([
-                'name' => 'sometimes|string|max:100',
-                'email' => 'sometimes|email|max:255|unique:users,email,' . $user->id,
-                'phone' => 'nullable|string|max:30',
-            ]);
-
-            $user->update($data);
+            $user->update($request->validated());
 
             return $this->success(['user' => new UserResource($user->fresh()->load('roles'))], 'Profile updated');
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
         }
     }
 
-    public function changePassword(Request $request)
+    public function changePassword(ChangeAuthPasswordRequest $request)
     {
         try {
             $user = auth('api')->user();
+            $data = $request->validated();
 
-            $data = $request->validate([
-                'current_password' => 'required|string',
-                'new_password' => 'required|string|min:8|confirmed',
-            ]);
-
-            if (!Hash::check($data['current_password'], $user->password)) {
+            if (! Hash::check($data['current_password'], $user->password)) {
                 return $this->error('Current password is incorrect', 422);
             }
 
             $user->update(['password' => Hash::make($data['new_password'])]);
 
             return $this->success(null, 'Password changed successfully');
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
         } catch (\Throwable $e) {
             return $this->error($e->getMessage());
         }
@@ -397,11 +305,9 @@ class AuthController extends Controller
      *
      * @unauthenticated
      */
-    public function googleAuth(Request $request)
+    public function googleAuth(GoogleAuthRequest $request)
     {
         try {
-            $request->validate(['credential' => 'required|string']);
-
             $response = Http::withToken($request->credential)
                 ->get('https://www.googleapis.com/oauth2/v3/userinfo');
 
@@ -415,7 +321,7 @@ class AuthController extends Controller
             $email = $payload['email'] ?? null;
             $name = $payload['name'] ?? $email;
 
-            if (!$googleId || !$email) {
+            if (! $googleId || ! $email) {
                 return $this->error('Google token missing required fields', 422);
             }
 
@@ -423,7 +329,7 @@ class AuthController extends Controller
                 ?? User::where('email', $email)->first();
 
             if ($user) {
-                if (!$user->google_id) {
+                if (! $user->google_id) {
                     $user->update(['google_id' => $googleId]);
                 }
             } else {
@@ -440,8 +346,6 @@ class AuthController extends Controller
             $token = auth('api')->login($user);
 
             return $this->success($this->tokenPayload($token), 'Google login successful');
-        } catch (ValidationException $e) {
-            return $this->validationError($e->errors());
         } catch (\Throwable $e) {
             Log::error('Google auth failed', ['error' => $e->getMessage()]);
             return $this->error('Google authentication failed', 500);
