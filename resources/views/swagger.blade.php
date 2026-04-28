@@ -23,7 +23,10 @@
             persistAuthorization: true,
             requestInterceptor: function (request) {
                 request.headers = request.headers || {};
+                // Swagger UI's curl snippet generator often prints a lowercase header key (`accept`).
+                // Set both to ensure the displayed snippet and the actual request are JSON-first.
                 request.headers['Accept'] = 'application/json';
+                request.headers['accept'] = 'application/json';
 
                 if (['post', 'put', 'patch'].includes((request.method || '').toLowerCase()) && !request.headers['Content-Type']) {
                     request.headers['Content-Type'] = 'application/json';
