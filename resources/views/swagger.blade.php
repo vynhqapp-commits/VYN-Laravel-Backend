@@ -21,6 +21,16 @@
             deepLinking: true,
             tryItOutEnabled: true,
             persistAuthorization: true,
+            requestInterceptor: function (request) {
+                request.headers = request.headers || {};
+                request.headers['Accept'] = 'application/json';
+
+                if (['post', 'put', 'patch'].includes((request.method || '').toLowerCase()) && !request.headers['Content-Type']) {
+                    request.headers['Content-Type'] = 'application/json';
+                }
+
+                return request;
+            },
         });
     };
 </script>
