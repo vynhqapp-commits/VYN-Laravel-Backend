@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Tenant;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ServiceResource;
+use App\Models\ApprovalRequest;
 use App\Models\Service;
 use App\Models\ServicePricingTier;
 use Illuminate\Http\Request;
@@ -144,6 +145,35 @@ class ServiceController extends Controller
     public function destroy(Service $service)
     {
         try {
+            $user = auth('api')->user();
+            if ($user && method_exists($user, 'hasAnyRole') && $user->hasAnyRole(['receptionist', 'staff'])) {
+                $existing = ApprovalRequest::query()
+                    ->where('entity_type', 'service')
+                    ->where('entity_id', (int) $service->id)
+                    ->where('requested_action', 'delete')
+                    ->where('status', ApprovalRequest::STATUS_PENDING)
+                    ->latest('id')
+                    ->first();
+
+                if ($existing) {
+                    return $this->success($existing, 'Deletion request already pending', 202);
+                }
+
+                $req = ApprovalRequest::create([
+                    'tenant_id' => (int) ($user->tenant_id ?? 0),
+                    'branch_id' => null,
+                    'entity_type' => 'service',
+                    'entity_id' => (int) $service->id,
+                    'requested_action' => 'delete',
+                    'requested_by' => (int) $user->id,
+                    'payload' => null,
+                    'status' => ApprovalRequest::STATUS_PENDING,
+                    'expires_at' => now()->addDays(7),
+                ]);
+
+                return $this->success($req, 'Deletion request submitted for approval', 202);
+            }
+
             $service->delete();
             return $this->success(null, 'Service deleted');
         } catch (\Throwable $e) {

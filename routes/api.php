@@ -106,6 +106,8 @@ Route::middleware('auth:api')->group(function () {
         Route::post('users', [SuperAdminUserController::class, 'store']);
         Route::patch('users/{user}', [SuperAdminUserController::class, 'update']);
         Route::delete('users/{user}', [SuperAdminUserController::class, 'destroy']);
+        Route::get('users/{user}/permissions', [SuperAdminUserController::class, 'permissions']);
+        Route::put('users/{user}/permissions', [SuperAdminUserController::class, 'syncPermissions']);
 
         // Roles & permissions (read-only)
         Route::get('roles', [SuperAdminRoleController::class, 'roles']);
@@ -163,7 +165,7 @@ Route::middleware('auth:api')->group(function () {
             Route::apiResource('service-categories', \App\Http\Controllers\Api\Tenant\ServiceCategoryController::class)
                 ->except(['show', 'index']);
             Route::apiResource('services', \App\Http\Controllers\Api\Tenant\ServiceController::class)
-                ->except(['index', 'show']);
+                ->except(['index', 'show', 'destroy']);
 
             // Per-branch service availability (weekly + overrides)
             Route::get('services/{service}/availabilities', [\App\Http\Controllers\Api\Tenant\ServiceAvailabilityController::class, 'index']);
@@ -181,6 +183,9 @@ Route::middleware('auth:api')->group(function () {
             Route::post('services/{service}/availability-overrides', [\App\Http\Controllers\Api\Tenant\ServiceAvailabilityOverrideController::class, 'store']);
             Route::patch('services/{service}/availability-overrides/{override}', [\App\Http\Controllers\Api\Tenant\ServiceAvailabilityOverrideController::class, 'update']);
             Route::delete('services/{service}/availability-overrides/{override}', [\App\Http\Controllers\Api\Tenant\ServiceAvailabilityOverrideController::class, 'destroy']);
+        });
+        Route::middleware('role:salon_owner,manager,receptionist,staff')->group(function () {
+            Route::delete('services/{service}', [\App\Http\Controllers\Api\Tenant\ServiceController::class, 'destroy']);
         });
 
         // Catalog: Package & Membership templates — read: all salon roles; write: salon_owner, manager
@@ -205,6 +210,8 @@ Route::middleware('auth:api')->group(function () {
         Route::middleware('role:salon_owner,manager')->group(function () {
             Route::post('products', [\App\Http\Controllers\Api\Tenant\ProductController::class, 'store']);
             Route::patch('products/{product}', [\App\Http\Controllers\Api\Tenant\ProductController::class, 'update']);
+        });
+        Route::middleware('role:salon_owner,manager,receptionist,staff')->group(function () {
             Route::delete('products/{product}', [\App\Http\Controllers\Api\Tenant\ProductController::class, 'destroy']);
         });
 
@@ -256,13 +263,19 @@ Route::middleware('auth:api')->group(function () {
 
         // Appointments — salon_owner, manager, receptionist, staff (staff: own calendar only)
         Route::middleware('role:salon_owner,manager,receptionist,staff')->group(function () {
-            Route::apiResource('appointments', \App\Http\Controllers\Api\Tenant\AppointmentController::class);
+            Route::apiResource('appointments', \App\Http\Controllers\Api\Tenant\AppointmentController::class)
+                ->except(['destroy']);
+        });
+        Route::middleware('role:salon_owner,manager,receptionist,staff')->group(function () {
+            Route::delete('appointments/{appointment}', [\App\Http\Controllers\Api\Tenant\AppointmentController::class, 'destroy']);
         });
         // Time blocks — salon_owner, manager, receptionist (block calendar / staff time)
         Route::middleware('role:salon_owner,manager,receptionist')->group(function () {
             Route::get('time-blocks', [\App\Http\Controllers\Api\Tenant\TimeBlockController::class, 'index']);
             Route::post('time-blocks', [\App\Http\Controllers\Api\Tenant\TimeBlockController::class, 'store']);
             Route::patch('time-blocks/{timeBlock}', [\App\Http\Controllers\Api\Tenant\TimeBlockController::class, 'update']);
+        });
+        Route::middleware('role:salon_owner,manager')->group(function () {
             Route::delete('time-blocks/{timeBlock}', [\App\Http\Controllers\Api\Tenant\TimeBlockController::class, 'destroy']);
         });
         // POS / Sales — salon_owner, manager, receptionist

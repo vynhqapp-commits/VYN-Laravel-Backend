@@ -7,6 +7,7 @@ use App\Models\Appointment;
 use App\Models\Branch;
 use App\Models\Customer;
 use App\Models\Invoice;
+use App\Models\Product;
 use App\Models\Service;
 use App\Models\Staff;
 use App\Models\Tenant;
@@ -84,6 +85,76 @@ class ApprovalRequestsTest extends TestCase
 
         $approvalId = (int) ($res['id'] ?? 0);
         $this->assertGreaterThan(0, $approvalId);
+
+        $this->assertDatabaseHas('approval_requests', [
+            'id' => $approvalId,
+            'tenant_id' => $tenant->id,
+            'entity_type' => 'appointment',
+            'entity_id' => $appointment->id,
+            'requested_action' => 'delete',
+            'status' => ApprovalRequest::STATUS_PENDING,
+        ]);
+
+        $this->actingAs($manager, 'api')
+            ->withHeader('X-Tenant', (string) $tenant->id)
+            ->postJson('/api/approval-requests/' . $approvalId . '/approve', [])
+            ->assertOk()
+            ->assertJsonPath('data.status', ApprovalRequest::STATUS_APPROVED);
+
+        $this->assertDatabaseMissing('appointments', ['id' => $appointment->id]);
+    }
+
+    public function test_staff_appointment_delete_creates_approval_request_instead_of_direct_delete(): void
+    {
+        $tenant = Tenant::create(['name' => 'Salon Staff Approval']);
+
+        $manager = User::factory()->create(['tenant_id' => $tenant->id, 'password' => Hash::make('secret123')]);
+        $this->assignRole($manager, 'manager');
+
+        $staffUser = User::factory()->create(['tenant_id' => $tenant->id, 'password' => Hash::make('secret123')]);
+        $this->assignRole($staffUser, 'staff');
+
+        $branch = Branch::withoutGlobalScopes()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Main',
+            'timezone' => 'UTC',
+            'is_active' => true,
+        ]);
+
+        $customer = Customer::withoutGlobalScopes()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Jane',
+            'phone' => '123',
+        ]);
+
+        $staff = Staff::withoutGlobalScopes()->create([
+            'tenant_id' => $tenant->id,
+            'branch_id' => $branch->id,
+            'user_id' => $staffUser->id,
+            'name' => 'Staff A',
+            'is_active' => true,
+        ]);
+
+        $appointment = Appointment::withoutGlobalScopes()->create([
+            'tenant_id' => $tenant->id,
+            'branch_id' => $branch->id,
+            'customer_id' => $customer->id,
+            'staff_id' => $staff->id,
+            'starts_at' => now()->addHour(),
+            'ends_at' => now()->addHours(2),
+            'status' => 'scheduled',
+            'source' => 'dashboard',
+        ]);
+
+        $res = $this->actingAs($staffUser, 'api')
+            ->withHeader('X-Tenant', (string) $tenant->id)
+            ->deleteJson('/api/appointments/' . $appointment->id)
+            ->assertStatus(202)
+            ->json('data');
+
+        $approvalId = (int) ($res['id'] ?? 0);
+        $this->assertGreaterThan(0, $approvalId);
+        $this->assertDatabaseHas('appointments', ['id' => $appointment->id]);
 
         $this->assertDatabaseHas('approval_requests', [
             'id' => $approvalId,
@@ -223,6 +294,108 @@ class ApprovalRequestsTest extends TestCase
 
         $sale = Invoice::withoutGlobalScopes()->findOrFail($saleId);
         $this->assertSame('refunded', (string) $sale->status);
+    }
+
+    public function test_receptionist_product_delete_creates_approval_request_and_manager_can_approve(): void
+    {
+        $tenant = Tenant::create(['name' => 'Salon Product Approval']);
+
+        $manager = User::factory()->create(['tenant_id' => $tenant->id, 'password' => Hash::make('secret123')]);
+        $this->assignRole($manager, 'manager');
+
+        $receptionist = User::factory()->create(['tenant_id' => $tenant->id, 'password' => Hash::make('secret123')]);
+        $this->assignRole($receptionist, 'receptionist');
+        $branch = Branch::withoutGlobalScopes()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Main',
+            'timezone' => 'UTC',
+            'is_active' => true,
+        ]);
+        Staff::withoutGlobalScopes()->create([
+            'tenant_id' => $tenant->id,
+            'branch_id' => $branch->id,
+            'user_id' => $receptionist->id,
+            'name' => 'Receptionist',
+            'is_active' => true,
+        ]);
+
+        $product = Product::withoutGlobalScopes()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Conditioner',
+            'price' => 100,
+            'cost' => 20,
+            'stock_quantity' => 5,
+            'is_active' => true,
+        ]);
+
+        $res = $this->actingAs($receptionist, 'api')
+            ->withHeader('X-Tenant', (string) $tenant->id)
+            ->deleteJson('/api/products/' . $product->id)
+            ->assertStatus(202)
+            ->json('data');
+
+        $approvalId = (int) ($res['id'] ?? 0);
+        $this->assertGreaterThan(0, $approvalId);
+        $this->assertDatabaseHas('products', ['id' => $product->id]);
+
+        $this->actingAs($manager, 'api')
+            ->withHeader('X-Tenant', (string) $tenant->id)
+            ->postJson('/api/approval-requests/' . $approvalId . '/approve', [])
+            ->assertOk()
+            ->assertJsonPath('data.status', ApprovalRequest::STATUS_APPROVED);
+
+        $this->assertDatabaseMissing('products', ['id' => $product->id]);
+    }
+
+    public function test_staff_service_delete_creates_approval_request_and_manager_can_approve(): void
+    {
+        $tenant = Tenant::create(['name' => 'Salon Service Approval']);
+
+        $manager = User::factory()->create(['tenant_id' => $tenant->id, 'password' => Hash::make('secret123')]);
+        $this->assignRole($manager, 'manager');
+
+        $staffUser = User::factory()->create(['tenant_id' => $tenant->id, 'password' => Hash::make('secret123')]);
+        $this->assignRole($staffUser, 'staff');
+        $branch = Branch::withoutGlobalScopes()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Main',
+            'timezone' => 'UTC',
+            'is_active' => true,
+        ]);
+        Staff::withoutGlobalScopes()->create([
+            'tenant_id' => $tenant->id,
+            'branch_id' => $branch->id,
+            'user_id' => $staffUser->id,
+            'name' => 'Staff A',
+            'is_active' => true,
+        ]);
+
+        $service = Service::withoutGlobalScopes()->create([
+            'tenant_id' => $tenant->id,
+            'name' => 'Beard Trim',
+            'duration_minutes' => 20,
+            'price' => 50,
+            'cost' => 10,
+            'is_active' => true,
+        ]);
+
+        $res = $this->actingAs($staffUser, 'api')
+            ->withHeader('X-Tenant', (string) $tenant->id)
+            ->deleteJson('/api/services/' . $service->id)
+            ->assertStatus(202)
+            ->json('data');
+
+        $approvalId = (int) ($res['id'] ?? 0);
+        $this->assertGreaterThan(0, $approvalId);
+        $this->assertDatabaseHas('services', ['id' => $service->id]);
+
+        $this->actingAs($manager, 'api')
+            ->withHeader('X-Tenant', (string) $tenant->id)
+            ->postJson('/api/approval-requests/' . $approvalId . '/approve', [])
+            ->assertOk()
+            ->assertJsonPath('data.status', ApprovalRequest::STATUS_APPROVED);
+
+        $this->assertDatabaseMissing('services', ['id' => $service->id]);
     }
 }
 

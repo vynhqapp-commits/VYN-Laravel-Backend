@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Tenant;
 
 use App\Http\Controllers\Controller;
 use App\Http\Resources\ProductResource;
+use App\Models\ApprovalRequest;
 use App\Models\Product;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -131,6 +132,35 @@ class ProductController extends Controller
     public function destroy(Product $product): JsonResponse
     {
         try {
+            $user = auth('api')->user();
+            if ($user && method_exists($user, 'hasAnyRole') && $user->hasAnyRole(['receptionist', 'staff'])) {
+                $existing = ApprovalRequest::query()
+                    ->where('entity_type', 'product')
+                    ->where('entity_id', (int) $product->id)
+                    ->where('requested_action', 'delete')
+                    ->where('status', ApprovalRequest::STATUS_PENDING)
+                    ->latest('id')
+                    ->first();
+
+                if ($existing) {
+                    return $this->success($existing, 'Deletion request already pending', 202);
+                }
+
+                $req = ApprovalRequest::create([
+                    'tenant_id' => (int) ($user->tenant_id ?? 0),
+                    'branch_id' => null,
+                    'entity_type' => 'product',
+                    'entity_id' => (int) $product->id,
+                    'requested_action' => 'delete',
+                    'requested_by' => (int) $user->id,
+                    'payload' => null,
+                    'status' => ApprovalRequest::STATUS_PENDING,
+                    'expires_at' => now()->addDays(7),
+                ]);
+
+                return $this->success($req, 'Deletion request submitted for approval', 202);
+            }
+
             $product->delete();
             return $this->success(null, 'Product deleted');
         } catch (\Throwable $e) {

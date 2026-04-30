@@ -10,6 +10,7 @@ use App\Models\Tenant;
 use App\Models\User;
 use App\Services\AuditLogger;
 use Illuminate\Support\Facades\Hash;
+use Spatie\Permission\Models\Permission;
 
 class UserController extends Controller
 {
@@ -119,6 +120,55 @@ class UserController extends Controller
             ]);
             $user->delete();
             return $this->success(null, 'User deleted');
+        } catch (\Throwable $e) {
+            return $this->error($e->getMessage(), 422);
+        }
+    }
+
+    public function permissions(User $user)
+    {
+        try {
+            return $this->success([
+                'user_id' => (string) $user->id,
+                'direct_permissions' => $user->permissions()->pluck('name')->values(),
+                'effective_permissions' => $user->getAllPermissions()->pluck('name')->values(),
+            ], 'User permissions retrieved');
+        } catch (\Throwable $e) {
+            return $this->error($e->getMessage(), 422);
+        }
+    }
+
+    public function syncPermissions(\Illuminate\Http\Request $request, User $user)
+    {
+        $data = $request->validate([
+            'permissions' => 'required|array',
+            'permissions.*' => 'string',
+        ]);
+
+        try {
+            $permissions = Permission::query()
+                ->where('guard_name', 'api')
+                ->whereIn('name', $data['permissions'])
+                ->pluck('name')
+                ->all();
+
+            if (count($permissions) !== count($data['permissions'])) {
+                return $this->validationError([
+                    'permissions' => ['One or more permissions are invalid for api guard.'],
+                ]);
+            }
+
+            $user->syncPermissions($permissions);
+            AuditLogger::log(optional($request->user('api'))->id, $user->tenant_id ? (int) $user->tenant_id : null, 'admin.user.permissions.sync', [
+                'user_id' => (string) $user->id,
+                'permissions' => $permissions,
+            ]);
+
+            return $this->success([
+                'user_id' => (string) $user->id,
+                'direct_permissions' => $user->permissions()->pluck('name')->values(),
+                'effective_permissions' => $user->getAllPermissions()->pluck('name')->values(),
+            ], 'User permissions updated');
         } catch (\Throwable $e) {
             return $this->error($e->getMessage(), 422);
         }

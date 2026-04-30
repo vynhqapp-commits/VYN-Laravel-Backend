@@ -80,5 +80,37 @@ class AdminApisTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true);
     }
+
+    public function test_super_admin_can_manage_direct_user_permissions(): void
+    {
+        $this->seed(RolesAndPermissionsSeeder::class);
+        $admin = User::where('email', 'admin@platform.com')->firstOrFail();
+        $tenant = Tenant::create([
+            'name' => 'Tenant Permission Overrides',
+            'domain' => 'permissions-' . uniqid() . '.example',
+            'plan' => 'basic',
+            'subscription_status' => 'active',
+        ]);
+
+        $user = User::factory()->create([
+            'tenant_id' => $tenant->id,
+            'email' => 'override-user@example.com',
+        ]);
+        $user->syncRoles([Role::findByName('staff', 'api')]);
+
+        $this->actingAs($admin, 'api')
+            ->putJson('/api/admin/users/' . $user->id . '/permissions', [
+                'permissions' => ['reports.export'],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.user_id', (string) $user->id);
+
+        $this->actingAs($admin, 'api')
+            ->getJson('/api/admin/users/' . $user->id . '/permissions')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonFragment(['reports.export']);
+    }
 }
 

@@ -122,7 +122,19 @@ class AppointmentLifecycleService
      */
     public function destroy(Appointment $appointment, mixed $user): array
     {
-        if ($user && method_exists($user, 'hasRole') && $user->hasRole('receptionist')) {
+        if ($user && method_exists($user, 'hasAnyRole') && $user->hasAnyRole(['receptionist', 'staff'])) {
+            $existing = ApprovalRequest::query()
+                ->where('entity_type', 'appointment')
+                ->where('entity_id', (int) $appointment->id)
+                ->where('requested_action', 'delete')
+                ->where('status', ApprovalRequest::STATUS_PENDING)
+                ->latest('id')
+                ->first();
+
+            if ($existing) {
+                return ['type' => 'approval_pending', 'approval' => $existing];
+            }
+
             $req = ApprovalRequest::create([
                 'tenant_id' => (int) ($user->tenant_id ?? 0),
                 'branch_id' => (int) $appointment->branch_id,
