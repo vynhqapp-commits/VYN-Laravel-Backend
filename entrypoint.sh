@@ -30,7 +30,6 @@ CACHE_STORE="${CACHE_STORE:-database}"
 JWT_SECRET="${JWT_SECRET:-}"
 EOF
 
-php artisan key:generate --force
 php artisan config:clear
 php artisan config:cache
 php artisan route:cache
