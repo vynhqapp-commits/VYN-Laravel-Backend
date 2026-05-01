@@ -1,0 +1,71 @@
+name: Deploy to Coolify on push to main
+
+# Why this exists:
+# Coolify's GitHub App webhook never auto-fires for this repo (verified
+# 2026-05-02 — every push to main since f595697 has needed a manual
+# Redeploy click). Rather than spend hours debugging the App-level
+# integration, we call Coolify's deploy webhook directly from GitHub
+# Actions on every push to main. More reliable, audit-trail visible in
+# the Actions tab, and trivial to disable if we ever fix the App.
+#
+# Required secrets (set in GitHub repo Settings -> Secrets and variables
+# -> Actions):
+#   COOLIFY_WEBHOOK_URL   Per-service deploy webhook URL from Coolify UI:
+#                         Backend service -> Webhooks (Deploy Keys) tab
+#                         -> "Deploy Webhook" — looks like
+#                         https://<coolify-host>/api/v1/deploy?uuid=...&force=false
+#   COOLIFY_TOKEN         Coolify API token from
+#                         <coolify-host>/security/api-tokens
+#
+# Both secrets MUST be set before the first push merges, otherwise the
+# workflow fails open (curl errors) but does not block the push itself.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # manual trigger from Actions UI
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false # serialize deploys; never cancel an in-flight one
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Validate secrets are present
+        run: |
+          if [ -z "${{ secrets.COOLIFY_WEBHOOK_URL }}" ]; then
+            echo "::error::COOLIFY_WEBHOOK_URL secret is not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.COOLIFY_TOKEN }}" ]; then
+            echo "::error::COOLIFY_TOKEN secret is not set"
+            exit 1
+          fi
+          echo "Secrets present — proceeding"
+
+      - name: Trigger Coolify deploy
+        env:
+          WEBHOOK_URL: ${{ secrets.COOLIFY_WEBHOOK_URL }}
+          TOKEN: ${{ secrets.COOLIFY_TOKEN }}
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          echo "Deploying commit $COMMIT_SHA to Coolify"
+          echo "Message: $COMMIT_MSG"
+          response=$(curl -sS -X GET \
+            -H "Authorization: Bearer $TOKEN" \
+            -w "\nHTTP_STATUS:%{http_code}" \
+            "$WEBHOOK_URL")
+          status=$(echo "$response" | tail -n1 | sed 's/HTTP_STATUS://')
+          body=$(echo "$response" | sed '$d')
+          echo "Coolify response: $body"
+          echo "HTTP status: $status"
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            echo "::error::Coolify returned non-2xx status ($status)"
+            exit 1
+          fi
+          echo "::notice::Deploy queued successfully — check Coolify UI for build progress"
