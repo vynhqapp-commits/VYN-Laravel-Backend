@@ -438,12 +438,19 @@ Route::middleware('auth:api')->group(function () {
             Route::post('gift-cards/{card}/void', [GiftCardController::class, 'void']);
         });
 
-        // Invoices
-        Route::get('invoices', [InvoiceController::class, 'index']);
-        Route::get('invoices/{invoice}', [InvoiceController::class, 'show']);
-        Route::post('invoices/{invoice}/void', [InvoiceController::class, 'void']);
+        // Invoices — read: salon staff (matches branches read at ~187)
+        Route::middleware('role:salon_owner,manager,receptionist,staff')->group(function () {
+            Route::get('invoices', [InvoiceController::class, 'index']);
+            Route::get('invoices/{invoice}', [InvoiceController::class, 'show']);
+        });
+        // Invoice void — destructive (matches gift-cards/{card}/void at ~438)
+        Route::middleware('role:salon_owner,manager')->group(function () {
+            Route::post('invoices/{invoice}/void', [InvoiceController::class, 'void']);
+        });
 
-        // Ledger
-        Route::get('ledger', [LedgerController::class, 'index']);
+        // Ledger — financial overview (matches monthly-closings at ~397)
+        Route::middleware('role:salon_owner,manager')->group(function () {
+            Route::get('ledger', [LedgerController::class, 'index']);
+        });
     });
 });
