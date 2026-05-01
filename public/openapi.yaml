@@ -785,9 +785,9 @@ paths:
       security: []
   /api/me:
     get:
-      summary: ''
+      summary: 'Current user profile'
       operationId: getApiMe
-      description: ''
+      description: 'Returns the authenticated user''s profile (id, email, name, role, tenant). Available to any authenticated role. Not tenant-scoped.'
       parameters:
         - $ref: '#/components/parameters/XTenantHeader'
       responses:
@@ -2384,9 +2384,9 @@ paths:
       security: []
   /api/appointments:
     get:
-      summary: ''
+      summary: 'List appointments'
       operationId: getApiAppointments
-      description: ''
+      description: 'Paginated list of appointments for the current tenant. Supports filters: status, date range, branch_id, staff_id, customer_id. Tenant-scoped.'
       parameters:
         - $ref: '#/components/parameters/XTenantHeader'
         -
@@ -2444,9 +2444,9 @@ paths:
       tags:
         - Appointments
     post:
-      summary: ''
+      summary: 'Create appointment'
       operationId: postApiAppointments
-      description: ''
+      description: 'Books a new appointment for a customer with one or more services and a staff member. Validates against staff schedule and service-branch availability windows. Tenant-scoped.'
       parameters:
         - $ref: '#/components/parameters/XTenantHeader'
       requestBody:
@@ -2586,9 +2586,9 @@ paths:
           type: integer
   /api/sales:
     get:
-      summary: ''
+      summary: 'List sales'
       operationId: getApiSales
-      description: ''
+      description: 'Paginated list of POS sale invoices for the current tenant. Supports filters: status, date range, branch_id. Tenant-scoped — requires X-Tenant header.'
       parameters:
         - $ref: '#/components/parameters/XTenantHeader'
         -
@@ -2627,9 +2627,9 @@ paths:
       tags:
         - Sales
     post:
-      summary: ''
+      summary: 'Create sale'
       operationId: postApiSales
-      description: ''
+      description: 'Creates a POS invoice with line items (services or products) and one or more payments. Auto-deducts inventory if product items are consumed; records commission and optional tip allocation. Tenant-scoped.'
       parameters:
         - $ref: '#/components/parameters/XTenantHeader'
       requestBody:
@@ -4083,9 +4083,9 @@ paths:
         - Settings
   /api/branches:
     get:
-      summary: ''
+      summary: 'List branches'
       operationId: getApiBranches
-      description: ''
+      description: 'Lists all branches (physical locations) for the current tenant including timezone and active status. Tenant-scoped.'
       parameters:
         - $ref: '#/components/parameters/XTenantHeader'
         -
@@ -4116,9 +4116,9 @@ paths:
       tags:
         - Branches
     post:
-      summary: ''
+      summary: 'Create branch'
       operationId: postApiBranches
-      description: ''
+      description: 'Creates a new branch within the current tenant with name, address, timezone, and contact info. Tenant-scoped.'
       parameters:
         - $ref: '#/components/parameters/XTenantHeader'
       requestBody:
@@ -4383,9 +4383,9 @@ paths:
         - Services
   /api/services:
     get:
-      summary: ''
+      summary: 'List services'
       operationId: getApiServices
-      description: ''
+      description: 'Paginated list of services in the catalog with duration, price, deposit amount, and category. Tenant-scoped.'
       parameters:
         - $ref: '#/components/parameters/XTenantHeader'
       responses:
@@ -4404,9 +4404,9 @@ paths:
       tags:
         - Services
     post:
-      summary: ''
+      summary: 'Create service'
       operationId: postApiServices
-      description: ''
+      description: 'Adds a new service to the salon catalog with pricing, duration in minutes, optional category, and required products usage list. Tenant-scoped.'
       parameters:
         - $ref: '#/components/parameters/XTenantHeader'
       responses:
@@ -5087,9 +5087,9 @@ paths:
           type: string
   /api/products:
     get:
-      summary: ''
+      summary: 'List products'
       operationId: getApiProducts
-      description: ''
+      description: 'Paginated list of products (retail and consumables) for the current tenant including SKU, price, cost, and stock level. Tenant-scoped.'
       parameters:
         - $ref: '#/components/parameters/XTenantHeader'
       responses:
@@ -5108,9 +5108,9 @@ paths:
       tags:
         - Products
     post:
-      summary: ''
+      summary: 'Create product'
       operationId: postApiProducts
-      description: ''
+      description: 'Adds a new product to the catalog with name, SKU, retail price, unit cost, and initial stock. Tenant-scoped.'
       parameters:
         - $ref: '#/components/parameters/XTenantHeader'
       responses:
@@ -5309,9 +5309,9 @@ paths:
         - Staff
   /api/staff:
     get:
-      summary: ''
+      summary: 'List staff'
       operationId: getApiStaff
-      description: ''
+      description: 'Paginated list of staff members in the current tenant including branch assignment and active status. Tenant-scoped.'
       parameters:
         - $ref: '#/components/parameters/XTenantHeader'
       responses:
@@ -5330,9 +5330,9 @@ paths:
       tags:
         - Staff
     post:
-      summary: ''
+      summary: 'Create staff'
       operationId: postApiStaff
-      description: ''
+      description: 'Creates a staff record linked to a branch, optionally bound to a user account for login. Tenant-scoped.'
       parameters:
         - $ref: '#/components/parameters/XTenantHeader'
       responses:
@@ -5552,9 +5552,9 @@ paths:
           type: integer
   /api/customers:
     get:
-      summary: ''
+      summary: 'List customers'
       operationId: getApiCustomers
-      description: ''
+      description: 'Paginated list of customers in the current tenant. Supports search by name/phone/email and filter by tag. Tenant-scoped.'
       parameters:
         - $ref: '#/components/parameters/XTenantHeader'
       responses:
@@ -5573,9 +5573,9 @@ paths:
       tags:
         - Customers
     post:
-      summary: ''
+      summary: 'Create customer'
       operationId: postApiCustomers
-      description: ''
+      description: 'Creates a new customer record in the current tenant. Phone is required; name, email, and tags are optional. Tenant-scoped.'
       parameters:
         - $ref: '#/components/parameters/XTenantHeader'
       responses:
@@ -6120,9 +6120,9 @@ paths:
           type: integer
   /api/cash-drawers:
     get:
-      summary: ''
+      summary: 'List cash drawer sessions'
       operationId: getApiCashDrawers
-      description: ''
+      description: 'Paginated list of cash drawer open/close sessions for the current tenant with reconciliation totals. Filter by branch_id and date range. Tenant-scoped.'
       parameters:
         - $ref: '#/components/parameters/XTenantHeader'
       responses:
@@ -6580,9 +6580,9 @@ paths:
           type: integer
   /api/reports/profit-loss:
     get:
-      summary: ''
+      summary: 'Profit and loss report'
       operationId: getApiReportsProfitLoss
-      description: ''
+      description: 'Profit and loss statement for the given period: revenue, expenses, and net. Supports date range filtering (from, to) and optional branch scope. Tenant-scoped.'
       parameters:
         - $ref: '#/components/parameters/XTenantHeader'
       responses:
@@ -6624,9 +6624,9 @@ paths:
         - Reports
   /api/reports/vat:
     get:
-      summary: ''
+      summary: 'VAT (sales tax) report'
       operationId: getApiReportsVat
-      description: ''
+      description: 'VAT report for the given period showing taxable revenue, exempt revenue, and VAT collected per rate band. Honors the tenant''s configured vat_rate. Tenant-scoped.'
       parameters:
         - $ref: '#/components/parameters/XTenantHeader'
       responses:
