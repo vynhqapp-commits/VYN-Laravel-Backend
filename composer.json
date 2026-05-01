@@ -16,6 +16,7 @@
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
+        "larastan/larastan": "^3.9",
         "laravel/pail": "^1.2.2",
         "laravel/pint": "^1.24",
         "laravel/sail": "^1.41",
@@ -51,6 +52,16 @@
         "test": [
             "@php artisan config:clear --ansi",
             "@php artisan test"
+        ],
+        "phpstan": [
+            "vendor/bin/phpstan analyse --memory-limit=2G"
+        ],
+        "phpstan:baseline": [
+            "vendor/bin/phpstan analyse --memory-limit=2G --generate-baseline=phpstan-baseline.neon"
+        ],
+        "setup-hooks": [
+            "git config core.hooksPath .githooks",
+            "@php -r \"echo \\\"Pre-commit hook installed (Pint + tests). Skip with --no-verify if absolutely necessary.\\n\\\";\""
         ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",

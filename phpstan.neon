@@ -1,0 +1,16 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    - phpstan-baseline.neon
+
+parameters:
+    level: 5
+    paths:
+        - app
+    excludePaths:
+        - app/Http/Controllers/Controller.php
+    # The codebase has not been linted before; treat the first run as
+    # establishing a baseline. Errors found on the first run can be
+    # captured into phpstan-baseline.neon (one-time) so CI passes while
+    # we incrementally fix them.
+    # baseline: phpstan-baseline.neon
+    reportUnmatchedIgnoredErrors: false

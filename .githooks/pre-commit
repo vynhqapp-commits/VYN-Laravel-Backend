@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Pre-commit hook — runs Pint (format) on staged PHP files and PHPUnit
+# (full suite). Aborts the commit if either fails.
+#
+# Install once per clone:
+#   git config core.hooksPath .githooks
+# Or run: composer setup-hooks
+#
+# Skip in emergencies (NOT recommended): git commit --no-verify
+
+set -e
+
+RED='\033[0;31m'
+YELLOW='\033[1;33m'
+GREEN='\033[0;32m'
+NC='\033[0m'
+
+# Find staged PHP files (added or modified, not deleted)
+STAGED_PHP=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.php$' || true)
+
+if [ -z "$STAGED_PHP" ]; then
+    # No PHP changes — skip Pint but still run tests
+    echo "${YELLOW}pre-commit:${NC} no staged PHP files — skipping Pint"
+else
+    echo "${YELLOW}pre-commit:${NC} running Pint --test on staged PHP files"
+    # Resolve PHP path (handles Homebrew installs that aren't on default PATH)
+    if [ -x "/opt/homebrew/opt/php@8.3/bin/php" ]; then
+        export PATH="/opt/homebrew/opt/php@8.3/bin:$PATH"
+    fi
+    if ! vendor/bin/pint --test $STAGED_PHP; then
+        echo "${RED}pre-commit:${NC} Pint reported formatting issues."
+        echo "${YELLOW}Fix with:${NC} vendor/bin/pint $(echo $STAGED_PHP | tr '\n' ' ')"
+        echo "${YELLOW}Then re-stage:${NC} git add -u && git commit"
+        exit 1
+    fi
+    echo "${GREEN}pre-commit:${NC} Pint passed"
+fi
+
+# Always run the test suite — fast (~5s), catches regressions before they hit main.
+echo "${YELLOW}pre-commit:${NC} running composer test"
+if ! composer test --quiet 2>&1 | tail -3; then
+    echo "${RED}pre-commit:${NC} tests failed. Fix before committing or use --no-verify (not recommended)."
+    exit 1
+fi
+echo "${GREEN}pre-commit:${NC} all checks passed"
