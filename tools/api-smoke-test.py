@@ -90,6 +90,13 @@ DEMO_ACCOUNTS = {
 DEFAULT_ROLE = "salon_owner"
 DEFAULT_TENANT = "glamour-salon"
 
+# Endpoints that destroy our own auth session — never call them in smoke mode
+SESSION_KILLERS = {
+    ("POST", "/api/logout"),
+    ("POST", "/api/auth/logout"),
+    ("POST", "/api/profile/change-password"),  # may invalidate JWT
+}
+
 
 # ---------- ANSI colors ----------
 class C:
@@ -269,12 +276,28 @@ def run(args) -> list[Result]:
                 results.append(Result(method_u, path, auth, 0, 0, 0, "SKIP", "write op (--write to enable)"))
                 continue
 
+            # Skip endpoints that would invalidate our own session
+            if (method_u, path) in SESSION_KILLERS:
+                results.append(Result(method_u, path, auth, 0, 0, 0, "SKIP", "session-killer (would log us out)"))
+                continue
+
             real_path = substitute_path_params(path)
             body = build_minimal_body(op) if method_u in {"POST", "PUT", "PATCH"} else None
             if body is not None:
                 headers["Content-Type"] = "application/json"
 
             status, content, dur = http_request(args.base, method_u, real_path, headers, body)
+
+            # Auto-recover from session loss: if an authenticated endpoint
+            # returns 401 unexpectedly, re-login once and retry
+            if status == 401 and auth in ("jwt", "jwt+tenant"):
+                new_token = login(args.base, email, password)
+                if new_token and new_token != token:
+                    token = new_token
+                    headers["Authorization"] = f"Bearer {token}"
+                    status, content, dur2 = http_request(args.base, method_u, real_path, headers, body)
+                    dur += dur2
+
             preview = content[:240].decode(errors="replace").replace("\n", " ")
 
             # Verdict
