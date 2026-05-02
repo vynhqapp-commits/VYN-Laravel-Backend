@@ -10,7 +10,7 @@ class DebtLedgerEntryResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'id' => (string) $this->id,
+            'id' => $this->id,
             'type' => (string) $this->type,
             'amount' => (string) $this->amount,
             'balance_after' => (string) $this->balance_after,
@@ -18,4 +18,3 @@ class DebtLedgerEntryResource extends JsonResource
         ];
     }
 }
-

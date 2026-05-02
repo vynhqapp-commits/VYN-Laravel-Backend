@@ -6,10 +6,10 @@ use App\Mail\OtpMail;
 use App\Models\OtpCode;
 use App\Models\Tenant;
 use App\Models\User;
+use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
-use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class AuthTest extends TestCase
@@ -21,7 +21,7 @@ class AuthTest extends TestCase
         parent::setUp();
 
         // Seed roles — required for assignRole() calls in AuthController
-        $this->seed(\Database\Seeders\RolesAndPermissionsSeeder::class);
+        $this->seed(RolesAndPermissionsSeeder::class);
     }
 
     // -------------------------------------------------------------------------
@@ -34,12 +34,12 @@ class AuthTest extends TestCase
         $this->assignRole($user, 'customer');
 
         $res = $this->postJson('/api/auth/login', [
-            'email'    => $user->email,
+            'email' => $user->email,
             'password' => 'secret123',
         ]);
 
         $res->assertOk()
-            ->assertJsonStructure(['data' => ['token', 'user' => ['id', 'email', 'tenantId', 'role']]]);
+            ->assertJsonStructure(['data' => ['token', 'user' => ['id', 'email', 'tenant_id', 'role']]]);
     }
 
     public function test_login_fails_with_wrong_password(): void
@@ -47,7 +47,7 @@ class AuthTest extends TestCase
         $user = User::factory()->create(['password' => Hash::make('secret123')]);
 
         $this->postJson('/api/auth/login', [
-            'email'    => $user->email,
+            'email' => $user->email,
             'password' => 'wrongpassword',
         ])->assertStatus(401);
     }
@@ -64,7 +64,7 @@ class AuthTest extends TestCase
         $this->assignRole($user, 'salon_owner');
 
         $res = $this->postJson('/api/auth/login', [
-            'email'    => $user->email,
+            'email' => $user->email,
             'password' => 'pass',
         ]);
 
@@ -79,14 +79,14 @@ class AuthTest extends TestCase
     public function test_register_customer_creates_user_with_customer_role(): void
     {
         $res = $this->postJson('/api/auth/register/customer', [
-            'email'     => 'jane@example.com',
-            'password'  => 'password123',
+            'email' => 'jane@example.com',
+            'password' => 'password123',
             'full_name' => 'Jane Doe',
-            'phone'     => '+1234567890',
+            'phone' => '+1234567890',
         ]);
 
         $res->assertStatus(201)
-            ->assertJsonStructure(['data' => ['token', 'user' => ['id', 'email', 'tenantId', 'role']]]);
+            ->assertJsonStructure(['data' => ['token', 'user' => ['id', 'email', 'tenant_id', 'role']]]);
 
         $this->assertDatabaseHas('users', ['email' => 'jane@example.com']);
 
@@ -100,7 +100,7 @@ class AuthTest extends TestCase
         User::factory()->create(['email' => 'dup@example.com']);
 
         $this->postJson('/api/auth/register/customer', [
-            'email'    => 'dup@example.com',
+            'email' => 'dup@example.com',
             'password' => 'password123',
         ])->assertStatus(422);
     }
@@ -108,7 +108,7 @@ class AuthTest extends TestCase
     public function test_register_customer_fails_with_short_password(): void
     {
         $this->postJson('/api/auth/register/customer', [
-            'email'    => 'new@example.com',
+            'email' => 'new@example.com',
             'password' => '123',
         ])->assertStatus(422);
     }
@@ -116,13 +116,13 @@ class AuthTest extends TestCase
     public function test_register_customer_uses_email_as_name_when_full_name_omitted(): void
     {
         $this->postJson('/api/auth/register/customer', [
-            'email'    => 'noname@example.com',
+            'email' => 'noname@example.com',
             'password' => 'password123',
         ])->assertStatus(201);
 
         $this->assertDatabaseHas('users', [
             'email' => 'noname@example.com',
-            'name'  => 'noname@example.com',
+            'name' => 'noname@example.com',
         ]);
     }
 
@@ -134,13 +134,13 @@ class AuthTest extends TestCase
     {
         $res = $this->postJson('/api/auth/register/salon-owner', [
             'salon_name' => 'Luxe Salon',
-            'email'      => 'owner@luxe.com',
-            'password'   => 'password123',
-            'full_name'  => 'Luxe Owner',
+            'email' => 'owner@luxe.com',
+            'password' => 'password123',
+            'full_name' => 'Luxe Owner',
         ]);
 
         $res->assertStatus(201)
-            ->assertJsonStructure(['data' => ['token', 'user' => ['id', 'email', 'tenantId', 'role']]]);
+            ->assertJsonStructure(['data' => ['token', 'user' => ['id', 'email', 'tenant_id', 'role']]]);
 
         $this->assertDatabaseHas('tenants', ['name' => 'Luxe Salon']);
         $this->assertDatabaseHas('users', ['email' => 'owner@luxe.com']);
@@ -149,15 +149,15 @@ class AuthTest extends TestCase
         $this->assertTrue($user->hasRole('salon_owner'));
         $this->assertNotNull($user->tenant_id);
 
-        // tenantId in response matches the created tenant
-        $tenantId = $res->json('data.user.tenantId');
+        // tenant_id in response matches the created tenant
+        $tenantId = $res->json('data.user.tenant_id');
         $this->assertEquals($user->tenant_id, $tenantId);
     }
 
     public function test_register_salon_owner_fails_without_salon_name(): void
     {
         $this->postJson('/api/auth/register/salon-owner', [
-            'email'    => 'owner@test.com',
+            'email' => 'owner@test.com',
             'password' => 'password123',
         ])->assertStatus(422);
     }
@@ -168,8 +168,8 @@ class AuthTest extends TestCase
 
         $this->postJson('/api/auth/register/salon-owner', [
             'salon_name' => 'Another Salon',
-            'email'      => 'taken@example.com',
-            'password'   => 'password123',
+            'email' => 'taken@example.com',
+            'password' => 'password123',
         ])->assertStatus(422);
     }
 
@@ -189,9 +189,9 @@ class AuthTest extends TestCase
 
         $this->assertDatabaseHas('otp_codes', [
             'identifier' => 'user@example.com',
-            'type'       => 'email',
-            'purpose'    => 'login',
-            'is_used'    => false,
+            'type' => 'email',
+            'purpose' => 'login',
+            'is_used' => false,
         ]);
     }
 
@@ -223,15 +223,15 @@ class AuthTest extends TestCase
 
         OtpCode::create([
             'identifier' => 'otp@example.com',
-            'type'       => 'email',
-            'purpose'    => 'login',
-            'code'       => '123456',
+            'type' => 'email',
+            'purpose' => 'login',
+            'code' => '123456',
             'expires_at' => now()->addMinutes(10),
         ]);
 
         $res = $this->postJson('/api/auth/verify-otp', [
             'email' => 'otp@example.com',
-            'code'  => '123456',
+            'code' => '123456',
         ]);
 
         $res->assertOk()
@@ -239,7 +239,7 @@ class AuthTest extends TestCase
 
         $this->assertDatabaseHas('otp_codes', [
             'identifier' => 'otp@example.com',
-            'is_used'    => true,
+            'is_used' => true,
         ]);
     }
 
@@ -247,32 +247,32 @@ class AuthTest extends TestCase
     {
         OtpCode::create([
             'identifier' => 'ghost@example.com',
-            'type'       => 'email',
-            'purpose'    => 'login',
-            'code'       => '999999',
+            'type' => 'email',
+            'purpose' => 'login',
+            'code' => '999999',
             'expires_at' => now()->addMinutes(10),
         ]);
 
         $this->postJson('/api/auth/verify-otp', [
             'email' => 'ghost@example.com',
-            'code'  => '999999',
+            'code' => '999999',
         ])->assertOk()
-          ->assertJsonPath('data.verified', true);
+            ->assertJsonPath('data.verified', true);
     }
 
     public function test_otp_verify_fails_with_wrong_code(): void
     {
         OtpCode::create([
             'identifier' => 'user@example.com',
-            'type'       => 'email',
-            'purpose'    => 'login',
-            'code'       => '111111',
+            'type' => 'email',
+            'purpose' => 'login',
+            'code' => '111111',
             'expires_at' => now()->addMinutes(10),
         ]);
 
         $this->postJson('/api/auth/verify-otp', [
             'email' => 'user@example.com',
-            'code'  => '000000',
+            'code' => '000000',
         ])->assertStatus(422);
     }
 
@@ -280,15 +280,15 @@ class AuthTest extends TestCase
     {
         OtpCode::create([
             'identifier' => 'user@example.com',
-            'type'       => 'email',
-            'purpose'    => 'login',
-            'code'       => '111111',
+            'type' => 'email',
+            'purpose' => 'login',
+            'code' => '111111',
             'expires_at' => now()->subMinute(),
         ]);
 
         $this->postJson('/api/auth/verify-otp', [
             'email' => 'user@example.com',
-            'code'  => '111111',
+            'code' => '111111',
         ])->assertStatus(422);
     }
 
@@ -296,16 +296,16 @@ class AuthTest extends TestCase
     {
         OtpCode::create([
             'identifier' => 'user@example.com',
-            'type'       => 'email',
-            'purpose'    => 'login',
-            'code'       => '111111',
+            'type' => 'email',
+            'purpose' => 'login',
+            'code' => '111111',
             'expires_at' => now()->addMinutes(10),
-            'is_used'    => true,
+            'is_used' => true,
         ]);
 
         $this->postJson('/api/auth/verify-otp', [
             'email' => 'user@example.com',
-            'code'  => '111111',
+            'code' => '111111',
         ])->assertStatus(422);
     }
 
@@ -355,7 +355,7 @@ class AuthTest extends TestCase
     {
         $tenant = Tenant::create([
             'name' => 'Test Salon',
-            'slug' => 'test-salon-' . uniqid(),
+            'slug' => 'test-salon-'.uniqid(),
             'subscription_status' => 'active',
             'timezone' => 'UTC',
             'currency' => 'USD',
@@ -382,7 +382,7 @@ class AuthTest extends TestCase
     {
         $tenant = Tenant::create([
             'name' => 'Test Salon Two',
-            'slug' => 'test-salon-two-' . uniqid(),
+            'slug' => 'test-salon-two-'.uniqid(),
             'subscription_status' => 'active',
             'timezone' => 'UTC',
             'currency' => 'USD',

@@ -10,20 +10,19 @@ class ExpenseResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
-            'id' => (string) $this->id,
-            'tenant_id' => (string) $this->tenant_id,
-            'branch_id' => $this->branch_id ? (string) $this->branch_id : null,
+            'id' => $this->id,
+            'tenant_id' => $this->tenant_id,
+            'branch_id' => $this->branch_id,
             'category' => $this->category,
             'description' => $this->description,
             'amount' => (string) $this->amount,
             'expense_date' => optional($this->expense_date)->toDateString(),
             'payment_method' => $this->payment_method,
             'Branch' => $this->whenLoaded('branch', fn () => $this->branch ? [
-                'id' => (string) $this->branch->id,
+                'id' => $this->branch->id,
                 'name' => $this->branch->name,
             ] : null),
             'created_at' => optional($this->created_at)->toISOString(),
         ];
     }
 }
-

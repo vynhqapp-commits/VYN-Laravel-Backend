@@ -435,7 +435,7 @@ Rate limiting: `public` = 60/min, `otp` = 6/min.
 | 7 | 2 models missing `BelongsToTenant` trait — `Subscription`, `AuditLog` | P1 | Add trait, migrate, regression-test | OPEN (audit finding Day 3) |
 | 8 | 26 raw `response()->json()` calls bypass ApiResponse trait | P2 | Replace with `$this->success/error/etc.` | OPEN |
 | 9 | 22 controller methods >50 lines | P2 | Extract services per CLAUDE.md rule | OPEN |
-| 10 | 13/23 Resources cast IDs to string, 10 don't, some endpoints bypass Resources | P2 | Standardize on integer IDs (breaking change) | OPEN — needs frontend dev in loop |
+| 10 | ~~9/23 Resources cast IDs to string + UserResource uses camelCase tenantId~~ | ~~P0~~ | ~~Standardize on integer IDs + snake_case tenant_id~~ | ✅ DONE Day 3 — `tests/Feature/IdTypeConsistencyTest.php` locks it in. See `08-DOCS/problems-identified.md` Problem #1+#2 |
 
 ---
 
@@ -499,7 +499,9 @@ tests/
 
 ## Reference docs
 
+- [`08-DOCS/problems-identified.md`](../08-DOCS/problems-identified.md) — **canonical tracker for known backend problems** (severity, status, resolution evidence)
 - [`08-DOCS/swagger-api.md`](../08-DOCS/swagger-api.md) — Swagger/OpenAPI status, what changed since Captain, what's still needed
+- [`08-DOCS/dev-toolkit-mechanics.md`](../08-DOCS/dev-toolkit-mechanics.md) — how the smoke runner / triage / audit / diff tools work internally
 - [`13-TAKEOVER/swagger-fix-tracker.md`](../13-TAKEOVER/swagger-fix-tracker.md) — running work log, day-by-day verification proofs
 - [`13-TAKEOVER/4-takeover-status.md`](../13-TAKEOVER/4-takeover-status.md) — risk register, ownership matrix, sequencing
 - [`tools/README.md`](tools/README.md) — quick reference for the dev toolkit (this file is the canonical version)
