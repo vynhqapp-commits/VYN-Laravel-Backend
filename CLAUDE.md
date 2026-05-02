@@ -424,14 +424,18 @@ Rate limiting: `public` = 60/min, `otp` = 6/min.
 
 ## Known Tech Debt
 
-| # | Issue | Priority | Fix |
-|---|-------|----------|-----|
-| 1 | Gift card routes: no role middleware | P0 | Add `role:salon_owner,manager` to routes/api.php:281-287 |
-| 2 | SaleController: 782 lines | P1 | Extract PosCheckoutService, CommissionService, TipService |
-| 3 | PublicBookingController: 545 lines | P2 | Extract BookingService |
-| 4 | No PHPStan/Psalm | P2 | Add static analysis |
-| 5 | No pre-commit hooks | P2 | Add Pint + PHPUnit hooks |
-| 6 | SQLite as default DB in config | P3 | Change config/database.php default to pgsql |
+| # | Issue | Priority | Fix | Status |
+|---|-------|----------|-----|--------|
+| 1 | ~~Gift card routes: no role middleware~~ | ~~P0~~ | ~~Add `role:salon_owner,manager`~~ | ✅ DONE — routes/api.php:429-439 wrap verify/redeem in `role:salon_owner,manager,receptionist` and CRUD/void in `role:salon_owner,manager` |
+| 2 | SaleController: 782 lines | P1 | Extract PosCheckoutService, CommissionService, TipService | OPEN |
+| 3 | PublicBookingController: 545 lines | P2 | Extract BookingService | OPEN |
+| 4 | ~~No PHPStan/Psalm~~ | ~~P2~~ | ~~Add static analysis~~ | ✅ DONE Day 2 — `composer phpstan` runs at level 5; 413 errors grandfathered into baseline |
+| 5 | ~~No pre-commit hooks~~ | ~~P2~~ | ~~Add Pint + PHPUnit hooks~~ | ✅ DONE Day 2 — `.githooks/pre-commit` |
+| 6 | SQLite as default DB in config | P3 | Change config/database.php default to pgsql | OPEN |
+| 7 | 2 models missing `BelongsToTenant` trait — `Subscription`, `AuditLog` | P1 | Add trait, migrate, regression-test | OPEN (audit finding Day 3) |
+| 8 | 26 raw `response()->json()` calls bypass ApiResponse trait | P2 | Replace with `$this->success/error/etc.` | OPEN |
+| 9 | 22 controller methods >50 lines | P2 | Extract services per CLAUDE.md rule | OPEN |
+| 10 | 13/23 Resources cast IDs to string, 10 don't, some endpoints bypass Resources | P2 | Standardize on integer IDs (breaking change) | OPEN — needs frontend dev in loop |
 
 ---
 
