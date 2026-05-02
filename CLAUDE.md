@@ -2,43 +2,171 @@
 
 > You are the **backend developer** on VYN. This file is your operating manual.
 > Your PM is Hassan. Your scope is everything inside this repo.
-> Last updated: 2026-04-07 (Sprint 03 start)
+> Last updated: 2026-05-02 (Day 3 of takeover — added tools/ harness)
 
 ---
 
 ## Your Scope
 
 ```
-YOU OWN:  app/  routes/  database/  tests/  config/
+YOU OWN:  app/  routes/  database/  tests/  config/  tools/
 YOU READ: CLAUDE.md, .env, composer.json, phpunit.xml
 YOU DON'T TOUCH: VYN-FrontEnd/ (that's the frontend dev's job)
 ```
 
 ---
 
-## First Day — Do These Before Writing Any Code
+## ⚡ Session Start — Run This Every Time
 
 ```bash
-# 1. Set up environment
-export PATH="/opt/homebrew/opt/php@8.3/bin:/opt/homebrew/opt/postgresql@16/bin:$PATH"
+# 1. Diagnose environment in one command
+./tools/dev.sh doctor
 
-# 2. Run the app — make sure it starts
-php artisan serve --port=8000
+# 2. If server isn't up, start it in the background
+./tools/dev.sh bg
 
-# 3. Run the tests — get your baseline
-composer test
-
-# 4. Seed the database (if fresh)
-php artisan migrate && php artisan db:seed
+# 3. Smoke-test every endpoint (read-only, ~10 seconds)
+./tools/dev.sh smoke
 ```
 
-**Then read these 5 files to understand the codebase patterns:**
+If `doctor` is all green and `smoke` reports `PASS 85 / FAIL 0`, you have a healthy local environment and can start working. If anything fails, fix it before writing any new code.
+
+---
+
+## 🛠️ Developer Toolkit (`tools/` — READ THIS FIRST)
+
+You are not just a Laravel engineer — you have an AI-tailored toolchain that makes you better than any human backend dev with Postman + manual psql. **Use these tools constantly. They are how you punch above your weight.**
+
+### `./tools/dev.sh <command>` — one-stop harness
+
+| Command | What it does |
+|---|---|
+| `doctor` | Diagnose env: PHP, Composer, .env, APP_KEY, DB, migrations, server, vendor |
+| `up` | Start `php artisan serve :8000` in foreground |
+| `bg` | Start server in background, write to `/tmp/vyn-serve.log` |
+| `down` | Kill any process on :8000 |
+| `migrate` | Apply pending migrations (`--force`) |
+| `fresh` | DROP everything, re-migrate, re-seed (DESTRUCTIVE — local only) |
+| `smoke` | Run `tools/api-smoke-test.py` — hits every endpoint in spec |
+| `test` | `composer test` (PHPUnit) |
+| `phpstan` | Static analysis at level 5 |
+| `pint` | Auto-format with Laravel Pint |
+| `audit` | Run `tools/audit.py` — codebase audit against CLAUDE.md rules |
+| `check` | Run all gates: pint --test → phpstan → test → smoke. Use before commit. |
+| `tail` | `tail -f storage/logs/laravel.log` |
+| `triage GET /api/staff` | Run `tools/triage.py` — gather everything to fix that endpoint |
+
+### `tools/api-smoke-test.py` — spec-driven smoke runner
+
+Reads `public/openapi.yaml`, logs in as a demo user, hits every endpoint with the right `Authorization` + `X-Tenant` headers, reports per-endpoint pass/fail.
+
+```bash
+python3 tools/api-smoke-test.py                          # default: salon_owner role
+python3 tools/api-smoke-test.py --role customer          # mostly 403 (expected)
+python3 tools/api-smoke-test.py --role manager
+python3 tools/api-smoke-test.py --role staff
+python3 tools/api-smoke-test.py --role super_admin
+python3 tools/api-smoke-test.py --filter customers       # subset
+python3 tools/api-smoke-test.py --only "GET /api/staff"  # single endpoint
+python3 tools/api-smoke-test.py --base https://admin.vynhq.com  # production
+python3 tools/api-smoke-test.py --json | jq .            # machine-readable
+python3 tools/api-smoke-test.py --write                  # include POST/PUT/PATCH/DELETE (local only!)
+python3 tools/api-smoke-test.py --report tools/smoke.md  # markdown report
+```
+
+**Path-independent.** Runs from any directory. Honors `VYN_EMAIL` / `VYN_PASSWORD` env vars.
+
+### `tools/triage.py <method> <path>` — bug-fix context bundle
+
+When an endpoint fails, this gives you EVERYTHING in one markdown brief:
+- Route definition (line in `routes/api.php`)
+- Controller class + method source (with size warnings)
+- FormRequest class (if any)
+- Resource class (if any)
+- Existing PHPUnit tests
+- Recent log slice
+- Suggested next commands (PHPStan, targeted test, smoke replay)
+
+```bash
+python3 tools/triage.py GET /api/staff
+python3 tools/triage.py "POST /api/sales"
+python3 tools/triage.py --from-smoke smoke.json   # triages every FAIL
+```
+
+**This is the single biggest leverage point you have over a human dev with Postman.** A 500 error becomes a one-shot prompt with all context.
+
+### `tools/audit.py` — codebase health report
+
+Scans for violations of the rules in this CLAUDE.md:
+
+```bash
+python3 tools/audit.py                 # all checks
+python3 tools/audit.py --only routes   # one check
+python3 tools/audit.py --json          # machine-readable
+python3 tools/audit.py --report a.md   # markdown
+```
+
+Checks:
+- `controller_size` — files > 400 lines
+- `method_size` — methods > 50 lines
+- `routes_without_role` — sensitive routes outside `role:*` middleware
+- `raw_json_response` — `response()->json()` bypassing `ApiResponse` trait
+- `without_global_scopes` — tenant isolation risk sites
+- `missing_tenant_trait` — models with `tenant_id` not using `BelongsToTenant`
+- `spec_route_drift` — routes not in OpenAPI / spec ops not in routes
+
+### Workflow patterns (memorize these)
+
+**You're fixing a bug:**
+```bash
+./tools/dev.sh smoke                                    # find what's broken
+python3 tools/triage.py GET /api/<broken-path>          # get full context
+# fix the code
+./tools/dev.sh smoke --only "GET /api/<broken-path>"    # verify
+./tools/dev.sh test                                     # run targeted PHPUnit
+./tools/dev.sh check                                    # run all gates before commit
+```
+
+**You're adding a feature:**
+```bash
+./tools/dev.sh doctor                                   # ensure env is healthy
+# write the failing test (TDD red)
+./tools/dev.sh test                                     # confirm RED
+# implement
+./tools/dev.sh test                                     # GREEN
+./tools/dev.sh audit                                    # CLAUDE.md rule check
+./tools/dev.sh smoke                                    # nothing else broke
+./tools/dev.sh check                                    # all gates before commit
+```
+
+**You're investigating "is the API healthy?":**
+```bash
+./tools/dev.sh smoke --base https://admin.vynhq.com     # production
+./tools/dev.sh smoke --role customer --base https://admin.vynhq.com   # also as customer
+./tools/dev.sh audit                                    # any new rule violations?
+```
+
+---
+
+## First Day — Read These to Understand the Codebase
+
+After running `./tools/dev.sh doctor` and `./tools/dev.sh smoke`, read these 5 files (in order):
 
 1. `app/Http/Traits/ApiResponse.php` — how every controller returns JSON
 2. `app/Models/Concerns/BelongsToTenant.php` — how multi-tenancy scoping works
 3. `app/Services/LedgerService.php` — the service class pattern to follow
 4. `tests/Feature/AuthTest.php` — how to write feature tests
-5. `routes/api.php` — the full API route map (298 lines)
+5. `routes/api.php` — the full API route map
+
+Demo accounts (used by all tools):
+
+| Role | Email | Password |
+|---|---|---|
+| Super Admin | admin@platform.com | password |
+| Salon Owner | owner@glamour-salon.com | password |
+| Manager | manager@glamour-salon.com | password |
+| Staff | staff@glamour-salon.com | password |
+| Customer | customer@glamour-salon.com | password |
 
 ---
 
@@ -357,20 +485,17 @@ tests/
 
 ---
 
-## Demo Accounts
-
-| Role | Email | Password |
-|------|-------|----------|
-| Super Admin | admin@platform.com | password |
-| Salon Owner | owner@glamour-salon.com | password |
-| Manager | manager@glamour-salon.com | password |
-| Staff | staff@glamour-salon.com | password |
-| Customer | customer@glamour-salon.com | password |
-
----
-
 ## How to Ask for Help
 
 - Tag the PM in your commit message or PR description
 - If blocked: say what you tried, what failed, what you need
 - Before asking: check existing code for patterns — 90% of answers are in the codebase
+- Run `./tools/dev.sh audit` before asking "is this code OK?" — it tells you objectively
+- Run `python3 tools/triage.py <method> <path>` before asking "why is this endpoint failing?" — it gathers all the context
+
+## Reference docs
+
+- [`08-DOCS/swagger-api.md`](../08-DOCS/swagger-api.md) — Swagger/OpenAPI status, what changed since Captain, what's still needed
+- [`13-TAKEOVER/swagger-fix-tracker.md`](../13-TAKEOVER/swagger-fix-tracker.md) — running work log, day-by-day verification proofs
+- [`13-TAKEOVER/4-takeover-status.md`](../13-TAKEOVER/4-takeover-status.md) — risk register, ownership matrix, sequencing
+- [`tools/README.md`](tools/README.md) — quick reference for the dev toolkit (this file is the canonical version)

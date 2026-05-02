@@ -1,2 +1,4 @@
 last-smoke-report*.md
 *.local.md
+triage/
+audit-report.md
