@@ -15,6 +15,9 @@
 #   check     — run all gates: pint --test, phpstan, test, smoke (no writes)
 #   tail      — tail storage/logs/laravel.log
 #   triage    — gather context for a failing endpoint (e.g. ./tools/dev.sh triage GET /api/staff)
+#   baseline  — save current smoke run as a baseline JSON (./tools/dev.sh baseline prod-2026-05-02 --base https://admin.vynhq.com)
+#   diff      — compare a saved baseline against a fresh smoke run (./tools/dev.sh diff tools/baselines/local-day3-postfix.json)
+#   baselines — list saved baselines
 #   doctor    — diagnose env: PHP, DB reachability, .env presence, migrations status
 #   help      — show this list
 
@@ -116,6 +119,48 @@ case "$cmd" in
       exit 1
     fi
     python3 tools/triage.py "$1" "$2"
+    ;;
+
+  baseline)
+    # Save current run as a named baseline
+    name="${1:-baseline-$(date +%Y%m%d-%H%M%S)}"
+    shift || true
+    mkdir -p tools/baselines
+    out="tools/baselines/${name}.json"
+    python3 tools/api-smoke-test.py --json "$@" > "$out"
+    echo "${GREEN}Saved baseline:${OFF} $out"
+    python3 -c "import json,sys; d=json.load(open('$out')); print(f'  PASS={d[\"pass\"]} FAIL={d[\"fail\"]} SKIP={d[\"skip\"]} TOTAL={d[\"total\"]} target={d[\"target\"]} role={d[\"role\"]}')"
+    ;;
+
+  diff)
+    # Compare a baseline against a fresh run
+    if [ -z "$1" ]; then
+      echo "Usage: ./tools/dev.sh diff <baseline.json> [extra smoke flags]"
+      echo "  e.g. ./tools/dev.sh diff tools/baselines/local-day3-postfix.json"
+      echo "       ./tools/dev.sh diff tools/baselines/prod-day3.json --base https://admin.vynhq.com"
+      exit 1
+    fi
+    baseline="$1"; shift
+    [ -f "$baseline" ] || { echo "${RED}Baseline not found:${OFF} $baseline"; exit 1; }
+    tmp="/tmp/smoke-current-$$.json"
+    python3 tools/api-smoke-test.py --json "$@" > "$tmp"
+    python3 tools/diff-smoke.py "$baseline" "$tmp"
+    rc=$?
+    rm -f "$tmp"
+    exit $rc
+    ;;
+
+  baselines)
+    # List saved baselines
+    if [ -d tools/baselines ]; then
+      echo "${YELLOW}Saved baselines:${OFF}"
+      for f in tools/baselines/*.json; do
+        [ -f "$f" ] || continue
+        python3 -c "import json,sys,os; d=json.load(open('$f')); print(f'  {os.path.basename(\"$f\"):40} pass={d[\"pass\"]:3d} fail={d[\"fail\"]} target={d[\"target\"]}')"
+      done
+    else
+      echo "${GRAY}No baselines yet. Save one with: ./tools/dev.sh baseline <name>${OFF}"
+    fi
     ;;
 
   doctor)
