@@ -1069,8 +1069,6 @@ paths:
                         type: string
                         example: null
                         nullable: true
-      tags:
-        - 'Public Booking'
       requestBody:
         required: false
         content:
@@ -1122,7 +1120,6 @@ paths:
                   description: 'Must be at least 1. Must not be greater than 50.'
                   example: 7
                   nullable: true
-      security: []
   /api/public/salons/nearby:
     get:
       summary: 'Nearby Salons'
@@ -2080,8 +2077,6 @@ paths:
                         type:
                           type: string
                           example: '->'
-      tags:
-        - 'Public Booking'
       requestBody:
         required: true
         content:
@@ -2144,7 +2139,6 @@ paths:
               required:
                 - lat
                 - lng
-      security: []
   '/api/public/salons/{slug}':
     get:
       summary: 'Salon Details'
@@ -2263,9 +2257,6 @@ paths:
                           - 'The date field is required.'
                         items:
                           type: string
-      tags:
-        - 'Public Booking'
-      security: []
   /api/public/book:
     post:
       summary: 'Book Appointment'
@@ -2379,9 +2370,6 @@ paths:
                           - 'The client name field is required.'
                         items:
                           type: string
-      tags:
-        - 'Public Booking'
-      security: []
   /api/appointments:
     get:
       summary: 'List appointments'
