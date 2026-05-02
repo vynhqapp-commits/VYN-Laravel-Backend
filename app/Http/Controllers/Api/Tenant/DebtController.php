@@ -8,13 +8,13 @@ use App\Http\Requests\Api\Tenant\IndexDebtsRequest;
 use App\Http\Requests\Api\Tenant\ListDebtWriteOffRequestsRequest;
 use App\Http\Requests\Api\Tenant\WriteOffDebtRequest;
 use App\Http\Resources\DebtLedgerEntryResource;
-use App\Models\Customer;
 use App\Models\Debt;
 use App\Models\DebtLedgerEntry;
 use App\Models\DebtWriteOffRequest;
 use App\Services\AuditLogger;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class DebtController extends Controller
@@ -24,7 +24,9 @@ class DebtController extends Controller
         $data = $request->validated();
 
         $tenantId = auth('api')->user()?->tenant_id;
-        if (!$tenantId) return $this->error('Tenant required', 422);
+        if (! $tenantId) {
+            return $this->error('Tenant required', 422);
+        }
 
         try {
             $customerId = (int) $data['customer_id'];
@@ -57,7 +59,9 @@ class DebtController extends Controller
 
         $tenantId = auth('api')->user()?->tenant_id;
         $userId = auth('api')->id();
-        if (!$tenantId || !$userId) return $this->error('Tenant required', 422);
+        if (! $tenantId || ! $userId) {
+            return $this->error('Tenant required', 422);
+        }
 
         DB::beginTransaction();
         try {
@@ -65,10 +69,12 @@ class DebtController extends Controller
             $debt->refresh();
             if ((int) $debt->tenant_id !== (int) $tenantId) {
                 DB::rollBack();
+
                 return $this->error('Not found', 404);
             }
-            if (!in_array($debt->status, ['open', 'partial'], true)) {
+            if (! in_array($debt->status, ['open', 'partial'], true)) {
                 DB::rollBack();
+
                 return $this->error('Debt is not payable', 422);
             }
 
@@ -95,9 +101,11 @@ class DebtController extends Controller
             ]);
 
             DB::commit();
+
             return $this->created(new DebtLedgerEntryResource($entry));
         } catch (\Throwable $e) {
             DB::rollBack();
+
             return $this->error($e->getMessage(), 422);
         }
     }
@@ -105,7 +113,9 @@ class DebtController extends Controller
     public function agingReport(Request $request): JsonResponse
     {
         $tenantId = auth('api')->user()?->tenant_id;
-        if (!$tenantId) return $this->error('Tenant required', 422);
+        if (! $tenantId) {
+            return $this->error('Tenant required', 422);
+        }
 
         try {
             $openDebts = Debt::query()
@@ -130,7 +140,7 @@ class DebtController extends Controller
                 $ageDays = (int) max(0, $ageDays);
                 $bucket = $ageDays <= 30 ? '0_30' : ($ageDays <= 60 ? '31_60' : ($ageDays <= 90 ? '61_90' : '90_plus'));
 
-                if (!isset($byCustomer[$cid])) {
+                if (! isset($byCustomer[$cid])) {
                     $byCustomer[$cid] = [
                         'client_id' => $cid,
                         'client' => $d->customer ? ['id' => (string) $d->customer->id, 'name' => $d->customer->name] : null,
@@ -171,19 +181,23 @@ class DebtController extends Controller
 
         $tenantId = auth('api')->user()?->tenant_id;
         $userId = auth('api')->id();
-        if (!$tenantId || !$userId) return $this->error('Tenant required', 422);
+        if (! $tenantId || ! $userId) {
+            return $this->error('Tenant required', 422);
+        }
 
         DB::beginTransaction();
         try {
             $debt->refresh();
             if ((int) $debt->tenant_id !== (int) $tenantId) {
                 DB::rollBack();
+
                 return $this->error('Not found', 404);
             }
 
             $amount = (float) $debt->remaining_amount;
             if ($amount <= 0.009) {
                 DB::rollBack();
+
                 return $this->error('Nothing to write off', 422);
             }
 
@@ -194,6 +208,7 @@ class DebtController extends Controller
 
             if ($existingPending) {
                 DB::rollBack();
+
                 return $this->error('A pending write-off request already exists', 422);
             }
 
@@ -203,10 +218,10 @@ class DebtController extends Controller
                 'requested_by' => $userId,
                 'amount' => $amount,
                 'reason' => $payload['reason'] ?? 'Write-off',
-                'status' => !empty($payload['submit_for_approval']) ? 'pending' : 'approved',
+                'status' => ! empty($payload['submit_for_approval']) ? 'pending' : 'approved',
             ]);
 
-            if (!empty($payload['submit_for_approval'])) {
+            if (! empty($payload['submit_for_approval'])) {
                 AuditLogger::log($userId, $tenantId, 'debt.writeoff.requested', [
                     'debt_id' => $debt->id,
                     'request_id' => $req->id,
@@ -239,12 +254,14 @@ class DebtController extends Controller
             }
 
             DB::commit();
+
             return $this->created([
                 'request_id' => (string) $req->id,
                 'status' => (string) $req->status,
-            ], !empty($payload['submit_for_approval']) ? 'Write-off request submitted' : 'Write-off approved');
+            ], ! empty($payload['submit_for_approval']) ? 'Write-off request submitted' : 'Write-off approved');
         } catch (\Throwable $e) {
             DB::rollBack();
+
             return $this->error($e->getMessage(), 422);
         }
     }
@@ -255,7 +272,7 @@ class DebtController extends Controller
 
         $rows = DebtWriteOffRequest::query()
             ->with(['debt:id,customer_id,remaining_amount,status', 'requestedBy:id,name', 'approvedBy:id,name'])
-            ->when(!empty($data['status']), fn ($q) => $q->where('status', $data['status']))
+            ->when(! empty($data['status']), fn ($q) => $q->where('status', $data['status']))
             ->latest()
             ->limit(200)
             ->get();
@@ -267,28 +284,34 @@ class DebtController extends Controller
     {
         $tenantId = auth('api')->user()?->tenant_id;
         $userId = auth('api')->id();
-        if (!$tenantId || !$userId) return $this->error('Tenant required', 422);
+        if (! $tenantId || ! $userId) {
+            return $this->error('Tenant required', 422);
+        }
 
         DB::beginTransaction();
         try {
             if ((int) $requestItem->tenant_id !== (int) $tenantId) {
                 DB::rollBack();
+
                 return $this->error('Not found', 404);
             }
             if ((string) $requestItem->status !== 'pending') {
                 DB::rollBack();
+
                 return $this->error('Only pending requests can be approved', 422);
             }
 
             $debt = Debt::query()->lockForUpdate()->findOrFail($requestItem->debt_id);
             if ((int) $debt->tenant_id !== (int) $tenantId) {
                 DB::rollBack();
+
                 return $this->error('Not found', 404);
             }
 
             $amount = min((float) $requestItem->amount, (float) $debt->remaining_amount);
             if ($amount <= 0.009) {
                 DB::rollBack();
+
                 return $this->error('Nothing to write off', 422);
             }
 
@@ -322,9 +345,11 @@ class DebtController extends Controller
             ]);
 
             DB::commit();
+
             return $this->success(new DebtLedgerEntryResource($entry), 'Write-off approved');
         } catch (\Throwable $e) {
             DB::rollBack();
+
             return $this->error($e->getMessage(), 422);
         }
     }
@@ -333,7 +358,9 @@ class DebtController extends Controller
     {
         $tenantId = auth('api')->user()?->tenant_id;
         $userId = auth('api')->id();
-        if (!$tenantId || !$userId) return $this->error('Tenant required', 422);
+        if (! $tenantId || ! $userId) {
+            return $this->error('Tenant required', 422);
+        }
 
         if ((int) $requestItem->tenant_id !== (int) $tenantId) {
             return $this->error('Not found', 404);
@@ -359,4 +386,3 @@ class DebtController extends Controller
         ], 'Write-off rejected');
     }
 }
-
